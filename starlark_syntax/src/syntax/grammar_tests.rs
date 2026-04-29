@@ -68,6 +68,24 @@ fn parse_err(program: &str) -> crate::Error {
     .unwrap_err()
 }
 
+fn assert_parse_fails_program(program: &str) {
+    assert!(
+        AstModule::parse(
+            "assert.bzl",
+            program.to_owned(),
+            &Dialect::AllOptionsInternal,
+        )
+        .is_err(),
+        "Expected parse failure for:\n{program}",
+    );
+}
+
+fn assert_parse_fails_programs(programs: &[&str]) {
+    for program in programs {
+        assert_parse_fails_program(program);
+    }
+}
+
 fn assert_parse_error_span_source(program: &str, expected_source: &str) {
     let err = parse_err(program);
     let span = err
@@ -455,10 +473,31 @@ fn test_error_unexpected_token() {
         "error_unexpected_token",
         &[
             "x = = 1",
+            "_ = *x",
             "def foo(,):\n  pass",
+            "f(a=1, *, b=2)",
             "x = [1, , 2]",
+            "_ = a + b not c",
+            "f(1+2 = 3)",
             "x = {,}",
+            "print 1 2",
+            "x[1, 2,:]",
+            "a = max(range(10)))",
             "def foo(x,,y):\n  pass",
+        ],
+    );
+}
+
+#[test]
+fn test_error_unexpected_eof() {
+    parse_fails(
+        "error_unexpected_eof",
+        &[
+            "def f():",
+            "if True:",
+            "if True:\n  pass\nelse:",
+            "if True:\n  pass\nelif x:",
+            "for x in xs:",
         ],
     );
 }
@@ -477,7 +516,15 @@ fn test_error_missing_colon() {
 
 #[test]
 fn test_error_missing_expression() {
-    parse_fails("error_missing_expression", &["x =", "x +=", "return\n1 +"]);
+    parse_fails(
+        "error_missing_expression",
+        &["x =", "x +=", "x = 1 +\n2", "return\n1 +"],
+    );
+}
+
+#[test]
+fn test_assignment_regressions_are_rejected() {
+    assert_parse_fails_programs(&["x, y\n", "x,\n", "x: int y\n", "x: int\n", "x: int += 1\n"]);
 }
 
 #[test]
@@ -486,7 +533,12 @@ fn test_error_bad_def() {
         "error_bad_def",
         &[
             "def :\n  pass",
+            "def pass():\n  pass",
+            "def load():\n  pass",
+            "def f(load):\n  pass",
+            "def f :\n  pass",
             "def foo(x y):\n  pass",
+            "def f(a, *-b, c):\n  pass",
             "def foo(**x, y):\n  pass",
         ],
     );
@@ -496,7 +548,15 @@ fn test_error_bad_def() {
 fn test_error_bad_load() {
     parse_fails(
         "error_bad_load",
-        &["load()", "load(123)", "load(\"foo.bzl\")"],
+        &[
+            "load()",
+            "load(123)",
+            "load(\"foo.bzl\")",
+            "load(\"\", 1)",
+            "load(1, 2)",
+            "load(\"a\", x)",
+            "load(\"a\", x2=x)",
+        ],
     );
 }
 
@@ -509,7 +569,14 @@ fn test_error_bad_for() {
 fn test_error_chained_comparison() {
     parse_fails(
         "error_chained_comparison",
-        &["0 <= 1 < 2", "a == b != c", "a < b > c", "a in b in c"],
+        &[
+            "0 <= 1 < 2",
+            "0 == 1 == 2",
+            "a == b != c",
+            "a < b > c",
+            "a in b in c",
+            "a in b not in c",
+        ],
     );
 }
 
@@ -533,8 +600,86 @@ fn test_error_indentation() {
 fn test_error_reserved_keyword() {
     parse_fails(
         "error_reserved_keyword",
-        &["class Foo:\n  pass", "import os", "raise ValueError"],
+        &[
+            "class Foo:\n  pass",
+            "import os",
+            "raise ValueError",
+            "load = 1",
+            "f(load())",
+        ],
     );
+}
+
+#[test]
+fn test_error_bad_comprehension() {
+    parse_fails(
+        "error_bad_comprehension",
+        &[
+            "_ = {x for y in z}",
+            "_ = [x for x in 1, 2, 3]",
+            "_ = [a for b in c if 1, 2]",
+            "_ = [a for b in lambda: c]",
+            "_ = [x for x in a if b else c]",
+            "[a for b in c else d]",
+        ],
+    );
+}
+
+#[test]
+fn test_error_missing_else() {
+    parse_fails("error_missing_else", &["_ = a if b"]);
+}
+
+#[test]
+fn test_error_string_escape() {
+    parse_fails("error_string_escape", &["raw = r'a\nb'", "s = \"\\x-0\""]);
+}
+
+#[test]
+fn test_error_call_arguments() {
+    parse_fails(
+        "error_call_arguments",
+        &[
+            "f(x = 1, 2)",
+            "f(x = 1, y = 2, 3)",
+            "f(x = 1, x = 2)",
+            "f(x = 1, x = 2, 3)",
+            "f(*args, x = 1)",
+            "f(*args, *more_args)",
+            "f(**kwargs, **more_kwargs)",
+        ],
+    );
+}
+
+#[test]
+fn test_error_precedence() {
+    parse_fails(
+        "error_precedence",
+        &[
+            "f(x = 1, 2",
+            "def f(**x, y",
+            "return 1\n)",
+            "def f():\n  load(\"m.bzl\", \"x\")\n)",
+        ],
+    );
+}
+
+#[test]
+fn test_error_statement_placement() {
+    parse_fails(
+        "error_statement_placement",
+        &[
+            "return 1",
+            "break",
+            "continue",
+            "def f():\n  load(\"m.bzl\", \"x\")",
+        ],
+    );
+}
+
+#[test]
+fn test_error_integer_literal() {
+    parse_fails("error_integer_literal", &["x = 01", "x = 0123"]);
 }
 
 #[test]

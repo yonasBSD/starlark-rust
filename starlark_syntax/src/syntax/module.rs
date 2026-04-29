@@ -374,6 +374,11 @@ impl AstModule {
 
 #[cfg(test)]
 mod tests {
+    use lalrpop_util as lu;
+
+    use super::parse_error_add_span;
+    use crate::codemap::CodeMap;
+    use crate::lexer::Token;
     use crate::slice_vec_ext::SliceExt;
     use crate::syntax::grammar_tests;
 
@@ -388,5 +393,40 @@ mod tests {
 
         assert_eq!(&get("foo"), "1:1-4");
         assert_eq!(&get("foo\ndef x():\n   pass"), "1:1-4 2:1-3:8 3:4-8");
+    }
+
+    #[test]
+    fn test_parse_error_add_span_bucket_mapping() {
+        let codemap = CodeMap::new("test.bzl".to_owned(), "pass".to_owned());
+
+        let assert_parse_error = |parse_error, pos, want_message, want_span| {
+            let err = parse_error_add_span(parse_error, pos, &codemap);
+            assert_eq!(format!("{}", err.without_diagnostic()), want_message);
+            assert_eq!(err.span().unwrap().to_string(), want_span);
+        };
+
+        assert_parse_error(
+            lu::ParseError::InvalidToken { location: 2 },
+            4,
+            "Parse error: invalid token",
+            "test.bzl:1:3",
+        );
+        assert_parse_error(
+            lu::ParseError::UnrecognizedEOF {
+                location: 1,
+                expected: vec![],
+            },
+            4,
+            "Parse error: unexpected end of file",
+            "test.bzl:1:5",
+        );
+        assert_parse_error(
+            lu::ParseError::ExtraToken {
+                token: (1, Token::ClosingRound, 2),
+            },
+            4,
+            "Parse error: extraneous token symbol ')'",
+            "test.bzl:1:2-3",
+        );
     }
 }

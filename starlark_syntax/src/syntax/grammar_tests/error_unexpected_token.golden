@@ -17,6 +17,18 @@ error: Parse error: unexpected symbol '=' here, expected one of "(", "+", "-", "
 
 
 Program:
+_ = *x
+
+Error:
+error: Parse error: unexpected symbol '*' here, expected one of "(", "+", "-", "...", "FLOAT", "FSTRING", "IDENTIFIER", "INTEGER", "STRING", "[", "lambda", "not", "{" or "~"
+ --> error_unexpected_token:1:5
+  |
+1 | _ = *x
+  |     ^
+  |
+
+
+Program:
 def foo(,):
   pass
 
@@ -25,6 +37,18 @@ error: Parse error: unexpected symbol ',' here, expected one of ")", "*", "**", 
  --> error_unexpected_token:1:9
   |
 1 | def foo(,):
+  |         ^
+  |
+
+
+Program:
+f(a=1, *, b=2)
+
+Error:
+error: Parse error: unexpected symbol ',' here, expected one of "(", "+", "-", "...", "FLOAT", "FSTRING", "IDENTIFIER", "INTEGER", "STRING", "[", "lambda", "not", "{" or "~"
+ --> error_unexpected_token:1:9
+  |
+1 | f(a=1, *, b=2)
   |         ^
   |
 
@@ -42,6 +66,30 @@ error: Parse error: unexpected symbol ',' here, expected one of "(", "+", "-", "
 
 
 Program:
+_ = a + b not c
+
+Error:
+error: Parse error: unexpected identifier 'c' here, expected one of "in"
+ --> error_unexpected_token:1:15
+  |
+1 | _ = a + b not c
+  |               ^
+  |
+
+
+Program:
+f(1+2 = 3)
+
+Error:
+error: Parse error: unexpected symbol '=' here, expected one of ")" or ","
+ --> error_unexpected_token:1:7
+  |
+1 | f(1+2 = 3)
+  |       ^
+  |
+
+
+Program:
 x = {,}
 
 Error:
@@ -50,6 +98,42 @@ error: Parse error: unexpected symbol ',' here, expected one of "(", "+", "-", "
   |
 1 | x = {,}
   |      ^
+  |
+
+
+Program:
+print 1 2
+
+Error:
+error: Parse error: unexpected integer literal '1' here, expected one of "\n", "!=", "%", "%=", "&", "&=", "(", ")", "*", "*=", "+", "+=", ",", "-", "-=", ".", "/", "//", "//=", "/=", ":", ";", "<", "<<", "<<=", "<=", "=", "==", ">", ">=", ">>", ">>=", "[", "]", "^", "^=", "and", "else", "for", "if", "in", "not", "or", "|", "|=" or "}"
+ --> error_unexpected_token:1:7
+  |
+1 | print 1 2
+  |       ^
+  |
+
+
+Program:
+x[1, 2,:]
+
+Error:
+error: Parse error: unexpected symbol ',' here, expected one of "]"
+ --> error_unexpected_token:1:7
+  |
+1 | x[1, 2,:]
+  |       ^
+  |
+
+
+Program:
+a = max(range(10)))
+
+Error:
+error: Parse error: unexpected symbol ')' here, expected one of "\n" or ";"
+ --> error_unexpected_token:1:19
+  |
+1 | a = max(range(10)))
+  |                   ^
   |
 
 
