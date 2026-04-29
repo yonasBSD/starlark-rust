@@ -16,21 +16,17 @@
  */
 
 use std::collections::HashMap;
-use std::fmt::Write;
 use std::fs;
 use std::mem;
 use std::path::Path;
 
 use derivative::Derivative;
 use dupe::Dupe;
-use lalrpop_util as lu;
 
 use crate::codemap::CodeMap;
 use crate::codemap::FileSpan;
-use crate::codemap::Pos;
 use crate::codemap::Span;
 use crate::codemap::Spanned;
-use crate::eval_exception::EvalException;
 use crate::lexer::Lexer;
 use crate::lexer::Token;
 use crate::syntax::AstLoad;
@@ -43,68 +39,12 @@ use crate::syntax::ast::ExprP;
 use crate::syntax::ast::IdentP;
 use crate::syntax::ast::LoadArgP;
 use crate::syntax::ast::Stmt;
-use crate::syntax::grammar::StarlarkParser;
 use crate::syntax::lint_suppressions::LintSuppressions;
 use crate::syntax::lint_suppressions::LintSuppressionsBuilder;
+use crate::syntax::parser::Parser;
+use crate::syntax::parser_lalrpop::LalrpopParser;
 use crate::syntax::state::ParserState;
 use crate::syntax::validate::validate_module;
-
-fn one_of(expected: &[String]) -> String {
-    let mut result = String::new();
-    for (i, e) in expected.iter().enumerate() {
-        let sep = match i {
-            0 => "one of",
-            _ if i < expected.len() - 1 => ",",
-            // Last expected message to be written
-            _ => " or",
-        };
-        write!(result, "{sep} {e}").unwrap();
-    }
-    result
-}
-
-/// Convert the error to a codemap diagnostic.
-///
-/// To build this diagnostic, the method needs the file span corresponding
-/// to the parsed file.
-fn parse_error_add_span(
-    err: lu::ParseError<usize, Token, EvalException>,
-    pos: usize,
-    codemap: &CodeMap,
-) -> crate::Error {
-    let (message, span) = match err {
-        lu::ParseError::InvalidToken { location } => (
-            "Parse error: invalid token".to_owned(),
-            Span::new(Pos::new(location as u32), Pos::new(location as u32)),
-        ),
-        lu::ParseError::UnrecognizedToken {
-            token: (x, t, y),
-            expected,
-        } => (
-            format!(
-                "Parse error: unexpected {} here, expected {}",
-                t,
-                one_of(&expected)
-            ),
-            Span::new(Pos::new(x as u32), Pos::new(y as u32)),
-        ),
-        lu::ParseError::UnrecognizedEOF { .. } => (
-            "Parse error: unexpected end of file".to_owned(),
-            Span::new(Pos::new(pos as u32), Pos::new(pos as u32)),
-        ),
-        lu::ParseError::ExtraToken { token: (x, t, y) } => (
-            format!("Parse error: extraneous token {t}"),
-            Span::new(Pos::new(x as u32), Pos::new(y as u32)),
-        ),
-        lu::ParseError::User { error } => return error.into_error(),
-    };
-
-    crate::Error::new_spanned(
-        crate::ErrorKind::Parser(anyhow::anyhow!(message)),
-        span,
-        codemap,
-    )
-}
 
 /// A representation of a Starlark module abstract syntax tree.
 ///
@@ -218,7 +158,7 @@ impl AstModule {
         // Keep track of block of comments, used for accumulating lint suppressions
         let mut in_comment_block = false;
         let mut errors = Vec::new();
-        match StarlarkParser::new().parse(
+        match LalrpopParser::parse_module(
             &mut ParserState {
                 codemap: &codemap,
                 dialect,
@@ -239,6 +179,7 @@ impl AstModule {
                     true
                 }
             }),
+            codemap.source().len(),
         ) {
             Ok(v) => {
                 if let Some(err) = errors.into_iter().next() {
@@ -252,7 +193,7 @@ impl AstModule {
                     lint_suppressions_builder.build(),
                 )?)
             }
-            Err(p) => Err(parse_error_add_span(p, codemap.source().len(), &codemap)),
+            Err(e) => Err(e.into_crate_error(&codemap)),
         }
     }
 
@@ -374,11 +315,6 @@ impl AstModule {
 
 #[cfg(test)]
 mod tests {
-    use lalrpop_util as lu;
-
-    use super::parse_error_add_span;
-    use crate::codemap::CodeMap;
-    use crate::lexer::Token;
     use crate::slice_vec_ext::SliceExt;
     use crate::syntax::grammar_tests;
 
@@ -393,40 +329,5 @@ mod tests {
 
         assert_eq!(&get("foo"), "1:1-4");
         assert_eq!(&get("foo\ndef x():\n   pass"), "1:1-4 2:1-3:8 3:4-8");
-    }
-
-    #[test]
-    fn test_parse_error_add_span_bucket_mapping() {
-        let codemap = CodeMap::new("test.bzl".to_owned(), "pass".to_owned());
-
-        let assert_parse_error = |parse_error, pos, want_message, want_span| {
-            let err = parse_error_add_span(parse_error, pos, &codemap);
-            assert_eq!(format!("{}", err.without_diagnostic()), want_message);
-            assert_eq!(err.span().unwrap().to_string(), want_span);
-        };
-
-        assert_parse_error(
-            lu::ParseError::InvalidToken { location: 2 },
-            4,
-            "Parse error: invalid token",
-            "test.bzl:1:3",
-        );
-        assert_parse_error(
-            lu::ParseError::UnrecognizedEOF {
-                location: 1,
-                expected: vec![],
-            },
-            4,
-            "Parse error: unexpected end of file",
-            "test.bzl:1:5",
-        );
-        assert_parse_error(
-            lu::ParseError::ExtraToken {
-                token: (1, Token::ClosingRound, 2),
-            },
-            4,
-            "Parse error: extraneous token symbol ')'",
-            "test.bzl:1:2-3",
-        );
     }
 }
