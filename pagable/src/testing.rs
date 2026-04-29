@@ -257,4 +257,9 @@ impl PagableStorage for EmptyPagableStorage {
     fn session_context(&self) -> &Mutex<SessionContext> {
         &self.session_context
     }
+
+    fn store_data(&self, data: PagableData) -> DataKey {
+        // no-op storage; just compute the key
+        data.compute_key()
+    }
 }

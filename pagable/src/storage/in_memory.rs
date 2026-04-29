@@ -294,4 +294,10 @@ impl PagableStorage for InMemoryPagableStorageHandle {
     fn session_context(&self) -> &Mutex<SessionContext> {
         &self.session_context
     }
+
+    fn store_data(&self, data: PagableData) -> DataKey {
+        let key = data.compute_key();
+        self.cache.insert_data(key, std::sync::Arc::new(data));
+        key
+    }
 }

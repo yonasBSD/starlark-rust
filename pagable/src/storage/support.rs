@@ -27,7 +27,7 @@ pub struct SerializerForPaging<'a> {
 }
 
 impl<'a> SerializerForPaging<'a> {
-    pub(crate) fn new(session_context: &'a mut SessionContext) -> Self {
+    pub fn new(session_context: &'a mut SessionContext) -> Self {
         Self {
             serde: postcard::Serializer {
                 output: crate::flavors::PagableVecFlavor::new(),
