@@ -129,7 +129,7 @@ Program:
 a = max(range(10)))
 
 Error:
-error: Parse error: unexpected symbol ')' here, expected one of "\n" or ";"
+error: Parse error: unexpected symbol ')' here, expected one of "\n", "," or ";"
  --> error_unexpected_token:1:19
   |
 1 | a = max(range(10)))

@@ -752,6 +752,21 @@ fn test_if_elif_span_covers_full_chain() {
         "if True:\n  a\nelif False:\n  b\nelse:\n  c",
     );
 }
+
+#[test]
+fn test_error_tuple_trailing_comma() {
+    parse_fails(
+        "error_tuple_trailing_comma",
+        &[
+            "_ = 1,",
+            "for k, v, in dict.items():\n  pass",
+            "_ = [(v, k) for k, v, in dict.items()]",
+            "a, b, = 1, 2",
+            "a, b = 1, 2,",
+        ],
+    );
+}
+
 pub fn parse(program: &str) -> String {
     parse_ast(program).statement.to_string()
 }
