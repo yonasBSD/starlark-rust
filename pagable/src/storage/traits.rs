@@ -73,7 +73,7 @@ pub trait PagableStorage: Send + Sync + 'static {
 
     /// Stores a single content-addressable [`PagableData`] blob and returns its
     /// [`DataKey`]. The key is derived from the data via
-    /// [`PagableData::compute_key`]; if the same data is stored twice the second
+    /// `PagableData::compute_key`; if the same data is stored twice the second
     /// write is expected to be idempotent (or skipped).
     fn store_data(&self, data: PagableData) -> DataKey;
 
