@@ -151,7 +151,8 @@ impl<K: SmallMapKeyDeserialize, V: StarlarkDeserialize> StarlarkDeserialize for 
 /// Trait for types that can be deserialized as SmallMap keys.
 /// Bridges the gap between types with `Hash` (use `Hashed::new`) and
 /// starlark value types (use `get_hashed()`).
-pub(crate) trait SmallMapKeyDeserialize: StarlarkDeserialize + Eq + Sized {
+pub trait SmallMapKeyDeserialize: StarlarkDeserialize + Eq + Sized {
+    /// Deserialize `Self` and compute its `Hashed` representation.
     fn starlark_deserialize_hashed(
         ctx: &mut dyn StarlarkDeserializeContext<'_>,
     ) -> crate::Result<Hashed<Self>>;

@@ -31,6 +31,7 @@ mod freeze;
 mod module;
 mod serde;
 mod starlark_pagable;
+mod starlark_pagable_panic;
 mod starlark_type_repr;
 mod starlark_value;
 mod trace;
@@ -230,6 +231,16 @@ pub fn derive_coerce(input: proc_macro::TokenStream) -> proc_macro::TokenStream 
 #[proc_macro_derive(StarlarkPagable, attributes(starlark_pagable))]
 pub fn derive_starlark_pagable(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
     starlark_pagable::derive_starlark_pagable(input)
+}
+
+/// Derive panicking `StarlarkSerialize` and `StarlarkDeserialize` impls.
+///
+/// Use on types that must satisfy the `StarlarkSerialize + StarlarkDeserialize` trait
+/// bounds (e.g. via `ValueLifetimeless`) but are never actually round-tripped.
+/// Any call to the generated methods triggers `unimplemented!()`.
+#[proc_macro_derive(StarlarkPagablePanic)]
+pub fn derive_starlark_pagable_panic(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
+    starlark_pagable_panic::derive_starlark_pagable_panic(input)
 }
 
 /// Derive the `StarlarkSerialize` trait.

@@ -57,6 +57,7 @@ pub(crate) mod heap_ref_id;
 pub(crate) mod serialized_frozen_value;
 pub(crate) mod starlark_deserialize;
 pub(crate) mod starlark_deserialize_context;
+pub(crate) mod starlark_pagable;
 pub(crate) mod starlark_serialize;
 pub(crate) mod starlark_serialize_context;
 
@@ -65,6 +66,8 @@ mod starlark_pagable_impls;
 // Re-export public types
 pub use starlark_deserialize::StarlarkDeserialize;
 pub use starlark_deserialize::StarlarkDeserializeContext;
+pub use starlark_pagable::StarlarkPagable;
+pub use starlark_pagable_impls::SmallMapKeyDeserialize;
 pub use starlark_serialize::StarlarkSerialize;
 pub use starlark_serialize::StarlarkSerializeContext;
 
