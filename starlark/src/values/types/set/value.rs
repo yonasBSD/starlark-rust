@@ -119,7 +119,7 @@ pub(crate) struct FrozenSetData {
     content: SmallSet<FrozenValue>,
 }
 
-#[cfg(test)]
+#[cfg(all(test, feature = "pagable"))]
 impl FrozenSetData {
     /// Construct a `FrozenSetData` from a pre-built set of frozen values.
     pub(crate) fn new(content: SmallSet<FrozenValue>) -> Self {
