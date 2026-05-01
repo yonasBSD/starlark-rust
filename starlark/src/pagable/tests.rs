@@ -25,6 +25,9 @@ use starlark_derive::NoSerialize;
 use starlark_derive::ProvidesStaticType;
 use starlark_derive::StarlarkPagable;
 use starlark_derive::starlark_value;
+use starlark_syntax::codemap::CodeMap;
+use starlark_syntax::codemap::FileSpan;
+use starlark_syntax::codemap::NativeCodeMap;
 
 use crate as starlark;
 use crate::const_frozen_string;
@@ -1059,6 +1062,113 @@ fn test_owned_frozen_value_typed_round_trip() -> crate::Result<()> {
     // Verify the restored value via Deref (OwnedFrozenValueTyped<T> derefs to T).
     assert_eq!(restored.flag, false);
     assert_eq!(restored.count, 99);
+
+    Ok(())
+}
+
+/// Test type mirroring StackFrame: String + Option<FileSpan>.
+#[derive(
+    Debug,
+    Display,
+    Allocative,
+    ProvidesStaticType,
+    NoSerialize,
+    StarlarkPagable
+)]
+#[display("TestStackFrame({}, {:?})", self.name, self.location)]
+struct TestStackFrame {
+    name: String,
+    #[starlark_pagable(pagable)]
+    location: Option<FileSpan>,
+}
+
+starlark_simple_value!(TestStackFrame);
+
+#[starlark_value(type = "TestStackFrame", skip_pagable)]
+impl<'v> StarlarkValue<'v> for TestStackFrame {
+    type Canonical = Self;
+}
+
+#[test]
+fn test_stack_frame_data_round_trip() -> crate::Result<()> {
+    let heap = FrozenHeap::new();
+
+    // With location = None.
+    heap.alloc_simple(TestStackFrame {
+        name: "native_func".to_owned(),
+        location: None,
+    });
+
+    // With location = Some(FileSpan).
+    let codemap = CodeMap::new(
+        "test.bzl".to_owned(),
+        "load('foo')\ndef bar():\n  pass\n".to_owned(),
+    );
+    let span = codemap.full_span();
+    heap.alloc_simple(TestStackFrame {
+        name: "bar".to_owned(),
+        location: Some(FileSpan {
+            file: codemap,
+            span,
+        }),
+    });
+
+    let heap_ref = heap.into_ref_named(TestHeapName::heap_name("test_stack_frame_data"));
+    let restored = round_trip_heap_ref(&heap_ref)?;
+
+    let headers = restored.collect_drop_headers_ordered();
+    assert_eq!(headers.len(), 2);
+
+    // First value: location = None.
+    let data0: &TestStackFrame = headers[0].unpack().downcast_ref().unwrap();
+    assert_eq!(data0.name, "native_func");
+    assert!(data0.location.is_none());
+
+    // Second value: location = Some, with filename and span preserved.
+    let data1: &TestStackFrame = headers[1].unpack().downcast_ref().unwrap();
+    assert_eq!(data1.name, "bar");
+    let loc = data1.location.as_ref().expect("should have location");
+    assert_eq!(loc.file.filename(), "test.bzl");
+    assert_eq!(loc.file.source(), "load('foo')\ndef bar():\n  pass\n");
+
+    Ok(())
+}
+
+#[test]
+fn test_native_codemap_round_trip() -> crate::Result<()> {
+    // Register a static NativeCodeMap via the pagable static value framework.
+    static NATIVE: NativeCodeMap = NativeCodeMap::new("test_native.rs", 42, 10);
+    pagable::static_value!(
+        NATIVE_STATIC: NativeCodeMap = &NATIVE,
+        starlark_syntax::codemap::NativeCodeMapStaticEntry
+    );
+
+    let codemap = NativeCodeMap::to_codemap(NATIVE_STATIC);
+    let file_span = FileSpan {
+        file: codemap,
+        span: NativeCodeMap::FULL_SPAN,
+    };
+
+    let heap = FrozenHeap::new();
+    heap.alloc_simple(TestStackFrame {
+        name: "native_call".to_owned(),
+        location: Some(file_span),
+    });
+
+    let heap_ref = heap.into_ref_named(TestHeapName::heap_name("test_native_codemap"));
+    let restored = round_trip_heap_ref(&heap_ref)?;
+
+    let headers = restored.collect_drop_headers_ordered();
+    assert_eq!(headers.len(), 1);
+    let data: &TestStackFrame = headers[0].unpack().downcast_ref().unwrap();
+    assert_eq!(data.name, "native_call");
+    let loc = data.location.as_ref().expect("should have location");
+    // Verify the NativeCodeMap round-tripped: filename and source preserved.
+    assert_eq!(loc.file.filename(), "test_native.rs");
+    assert_eq!(loc.file.source(), "<native>");
+    // Verify identity: it should be the same static NativeCodeMap,
+    // so CodeMap::id() should match.
+    assert_eq!(loc.file.id(), NativeCodeMap::to_codemap(NATIVE_STATIC).id());
 
     Ok(())
 }
