@@ -1205,6 +1205,27 @@ fn test_frozen_dict_round_trip() -> crate::Result<()> {
 }
 
 #[test]
+fn test_frozen_struct_round_trip() -> crate::Result<()> {
+    use crate::values::structs::AllocStruct;
+
+    let heap = FrozenHeap::new();
+    heap.alloc(AllocStruct([("name", "alice"), ("age", "30")]));
+
+    let heap_ref = heap.into_ref_named(TestHeapName::heap_name("test_frozen_struct"));
+    let restored = round_trip_heap_ref(&heap_ref)?;
+
+    // Struct has Drop (SmallMap), so it's in the drop bump.
+    let headers = restored.collect_drop_headers_ordered();
+    assert_eq!(headers.len(), 1);
+    let attrs = headers[0].unpack().dir_attr();
+    assert_eq!(attrs.len(), 2);
+    assert!(attrs.contains(&"name".to_owned()));
+    assert!(attrs.contains(&"age".to_owned()));
+
+    Ok(())
+}
+
+#[test]
 fn test_static_frozen_value_round_trip() -> crate::Result<()> {
     // Test that FrozenValues pointing to static values (not on any heap)
     // survive a round-trip through pagable serialization.
