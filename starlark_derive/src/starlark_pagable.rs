@@ -24,20 +24,29 @@
 //! (`PagableSerialize::pagable_serialize(ctx.pagable())` /
 //!  `PagableDeserialize::pagable_deserialize(ctx.pagable())`).
 
+use std::collections::HashSet;
+
 use proc_macro2::Ident;
 use proc_macro2::TokenStream;
 use quote::quote;
 use quote::quote_spanned;
 use syn::Attribute;
+use syn::Data;
 use syn::DeriveInput;
+use syn::Field;
 use syn::Fields;
+use syn::GenericArgument;
 use syn::Generics;
 use syn::Index;
 use syn::LitStr;
+use syn::PathArguments;
 use syn::Token;
+use syn::Type;
+use syn::TypePath;
 use syn::WherePredicate;
 use syn::parse::ParseStream;
 use syn::parse_macro_input;
+use syn::parse_quote;
 use syn::punctuated::Punctuated;
 use syn::spanned::Spanned;
 
@@ -64,10 +73,13 @@ struct FieldAttrs {
 
 #[derive(Default)]
 struct TypeAttrs {
-    /// Extra `where`-clause predicates appended to the generated impl's
-    /// where clause. Same shape as serde's `#[serde(bound = "...")]`:
-    /// a comma-separated list of `syn::WherePredicate`s, so projection
-    /// predicates like `V::String: StarlarkSerialize` are valid.
+    /// Override the auto-synthesized per-field bounds (see
+    /// [`compute_auto_bounds`]). When set, these predicates are appended
+    /// verbatim to the impl's where clause and the auto-bounds are
+    /// suppressed entirely — same container-level semantics as serde's
+    /// `#[serde(bound = "...")]`. The string is a comma-separated list
+    /// of `syn::WherePredicate`s, so projection predicates like
+    /// `V::String: StarlarkSerialize` are valid.
     bound: Vec<WherePredicate>,
     /// Overrides the type the generated impls target. When set, the impls
     /// are emitted as `impl Trait for <impl_for>` with empty `<>` and no
@@ -153,25 +165,41 @@ fn gen_impl_generics(generics: &Generics, attrs: &TypeAttrs) -> syn::Result<Toke
 /// reference the original generic params that no longer exist on this impl).
 ///
 /// Otherwise the impl is generic over the type's own parameters, and the
-/// where clause is the type's own where clause with any `bound` predicates
+/// where clause is the type's own where clause with `extra` predicates
 /// appended.
 fn gen_target_ty(
     name: &Ident,
     generics: &Generics,
     attrs: &TypeAttrs,
+    extra: &[WherePredicate],
 ) -> syn::Result<(TokenStream, TokenStream)> {
     if let Some(t) = &attrs.impl_for {
         let toks: TokenStream = t.parse()?;
         return Ok((toks, quote! {}));
     }
     let (_, ty_generics, _) = generics.split_for_impl();
-    let where_clause = build_where_clause(generics, &attrs.bound);
+    let where_clause = build_where_clause(generics, extra);
     Ok((quote! { #name #ty_generics }, where_clause))
 }
 
-/// Combine the type's own where-clause predicates with any user-supplied
-/// `bound = "..."` predicates and emit a `where ...` token stream (or
-/// nothing if both are empty).
+/// Pick the effective per-impl bound predicates: user's `bound = "..."`
+/// if provided (override semantics, matching serde's container-level
+/// `#[serde(bound = "...")]`), otherwise the auto-synthesized bounds
+/// from [`compute_auto_bounds`]. `impl_for` skips both — the impl is
+/// non-generic so there's nothing to bound.
+fn effective_bounds(input: &DeriveInput, attrs: &TypeAttrs) -> syn::Result<Vec<WherePredicate>> {
+    if attrs.impl_for.is_some() {
+        return Ok(Vec::new());
+    }
+    if !attrs.bound.is_empty() {
+        return Ok(attrs.bound.clone());
+    }
+    compute_auto_bounds(input)
+}
+
+/// Combine the type's own where-clause predicates with any extra
+/// predicates and emit a `where ...` token stream (or nothing if both
+/// are empty).
 fn build_where_clause(generics: &Generics, extra: &[WherePredicate]) -> TokenStream {
     let own = generics
         .where_clause
@@ -183,6 +211,142 @@ fn build_where_clause(generics: &Generics, extra: &[WherePredicate]) -> TokenStr
     }
     let predicates = own.iter().chain(extra.iter());
     quote! { where #(#predicates,)* }
+}
+
+/// Compute the auto-synthesized per-field bounds for the derived impls.
+///
+/// Walks every non-`skip`ped field's type and, for each:
+/// - generic type parameter `T` referenced (directly or transitively)
+/// - associated-type projection `T::Assoc` referenced
+///
+/// emits `T: starlark::pagable::StarlarkPagable` (which is
+/// `StarlarkSerialize + StarlarkDeserialize`).
+///
+/// Carve-outs: `PhantomData<T>` is skipped (its impls don't depend on
+/// `T`), as are fields marked `#[starlark_pagable(skip)]`.
+///
+/// Cases that need extra bounds beyond `StarlarkPagable` (e.g. a
+/// `SmallMap<K, V>` whose `K` needs `SmallMapKeyDeserialize` for the
+/// deserialize impl) are not handled here — use the explicit
+/// `#[starlark_pagable(bound = "...")]` escape hatch for those.
+fn compute_auto_bounds(input: &DeriveInput) -> syn::Result<Vec<WherePredicate>> {
+    let all_type_params: HashSet<Ident> = input
+        .generics
+        .type_params()
+        .map(|p| p.ident.clone())
+        .collect();
+
+    let mut visitor = AutoBoundVisitor {
+        all_type_params,
+        type_params_used: HashSet::new(),
+        associated_types_used: Vec::new(),
+    };
+
+    let mut visit_field = |field: &Field| -> syn::Result<()> {
+        let attrs = extract_field_attrs(&field.attrs)?;
+        if attrs.skip {
+            return Ok(());
+        }
+        visitor.visit_type(&field.ty);
+        Ok(())
+    };
+
+    match &input.data {
+        Data::Struct(data) => {
+            for field in &data.fields {
+                visit_field(field)?;
+            }
+        }
+        Data::Enum(data) => {
+            for variant in &data.variants {
+                for field in &variant.fields {
+                    visit_field(field)?;
+                }
+            }
+        }
+        Data::Union(_) => return Ok(Vec::new()),
+    }
+
+    let mut predicates: Vec<WherePredicate> = Vec::new();
+    for ident in &visitor.type_params_used {
+        predicates.push(parse_quote! { #ident: starlark::pagable::StarlarkPagable });
+    }
+    for path in &visitor.associated_types_used {
+        predicates.push(parse_quote! { #path: starlark::pagable::StarlarkPagable });
+    }
+    Ok(predicates)
+}
+
+/// Visitor that collects generic type parameters and associated-type
+/// projections referenced in field types.
+struct AutoBoundVisitor {
+    all_type_params: HashSet<Ident>,
+    type_params_used: HashSet<Ident>,
+    associated_types_used: Vec<TypePath>,
+}
+
+impl AutoBoundVisitor {
+    fn visit_type(&mut self, ty: &Type) {
+        match ty {
+            Type::Path(tp) => self.visit_type_path(tp),
+            Type::Reference(tr) => self.visit_type(&tr.elem),
+            Type::Group(tg) => self.visit_type(&tg.elem),
+            Type::Paren(tp) => self.visit_type(&tp.elem),
+            Type::Array(ta) => self.visit_type(&ta.elem),
+            Type::Slice(ts) => self.visit_type(&ts.elem),
+            Type::Ptr(tp) => self.visit_type(&tp.elem),
+            Type::Tuple(tt) => {
+                for elem in &tt.elems {
+                    self.visit_type(elem);
+                }
+            }
+            _ => {}
+        }
+    }
+
+    fn visit_type_path(&mut self, tp: &TypePath) {
+        // PhantomData<T> doesn't impose any bound on T.
+        if let Some(seg) = tp.path.segments.last()
+            && seg.ident == "PhantomData"
+        {
+            return;
+        }
+
+        // Direct type parameter: `T` (single segment, no args).
+        if tp.qself.is_none() && tp.path.leading_colon.is_none() && tp.path.segments.len() == 1 {
+            let seg = &tp.path.segments[0];
+            if matches!(seg.arguments, PathArguments::None)
+                && self.all_type_params.contains(&seg.ident)
+            {
+                self.type_params_used.insert(seg.ident.clone());
+                return;
+            }
+        }
+
+        // Associated-type projection: `T::Assoc` (multi-segment, first is
+        // a type parameter, no qself).
+        if tp.qself.is_none() && tp.path.leading_colon.is_none() && tp.path.segments.len() >= 2 {
+            let first = &tp.path.segments[0];
+            if matches!(first.arguments, PathArguments::None)
+                && self.all_type_params.contains(&first.ident)
+            {
+                self.associated_types_used.push(tp.clone());
+                return;
+            }
+        }
+
+        // Otherwise: not a recognised type-param/projection itself —
+        // recurse into any generic arguments (e.g. `Option<T>`, `Vec<T>`).
+        for seg in &tp.path.segments {
+            if let PathArguments::AngleBracketed(args) = &seg.arguments {
+                for arg in &args.args {
+                    if let GenericArgument::Type(arg_ty) = arg {
+                        self.visit_type(arg_ty);
+                    }
+                }
+            }
+        }
+    }
 }
 
 fn extract_field_attrs(attrs: &[Attribute]) -> syn::Result<FieldAttrs> {
@@ -261,7 +425,8 @@ fn derive_starlark_serialize_impl(input: &DeriveInput) -> syn::Result<proc_macro
     let type_attrs = extract_type_attrs(&input.attrs)?;
     let impl_generics = gen_impl_generics(&input.generics, &type_attrs)?;
     let concrete = type_attrs.impl_for.is_some();
-    let (target_ty, where_clause) = gen_target_ty(name, &input.generics, &type_attrs)?;
+    let bounds = effective_bounds(input, &type_attrs)?;
+    let (target_ty, where_clause) = gen_target_ty(name, &input.generics, &type_attrs, &bounds)?;
 
     let body = match &input.data {
         syn::Data::Struct(data) => gen_serialize_fields(&data.fields, concrete)?,
@@ -335,7 +500,8 @@ fn derive_starlark_deserialize_impl(input: &DeriveInput) -> syn::Result<proc_mac
     let type_attrs = extract_type_attrs(&input.attrs)?;
     let impl_generics = gen_impl_generics(&input.generics, &type_attrs)?;
     let concrete = type_attrs.impl_for.is_some();
-    let (target_ty, where_clause) = gen_target_ty(name, &input.generics, &type_attrs)?;
+    let bounds = effective_bounds(input, &type_attrs)?;
+    let (target_ty, where_clause) = gen_target_ty(name, &input.generics, &type_attrs, &bounds)?;
 
     let body = match &input.data {
         syn::Data::Struct(data) => gen_deserialize_struct(name, &data.fields, concrete)?,
