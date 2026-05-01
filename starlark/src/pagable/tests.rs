@@ -1226,6 +1226,40 @@ fn test_frozen_struct_round_trip() -> crate::Result<()> {
 }
 
 #[test]
+fn test_frozen_set_round_trip() -> crate::Result<()> {
+    use starlark_map::small_set::SmallSet;
+
+    use crate::values::types::set::value::FrozenSet;
+    use crate::values::types::set::value::FrozenSetData;
+    use crate::values::types::set::value::SetGen;
+
+    let heap = FrozenHeap::new();
+
+    // Build a set with values {1, 2, 3}.
+    let mut content: SmallSet<FrozenValue> = SmallSet::new();
+    content.insert_hashed(FrozenValue::testing_new_int(1).get_hashed()?);
+    content.insert_hashed(FrozenValue::testing_new_int(2).get_hashed()?);
+    content.insert_hashed(FrozenValue::testing_new_int(3).get_hashed()?);
+    heap.alloc_simple(SetGen(FrozenSetData::new(content)));
+
+    let heap_ref = heap.into_ref_named(TestHeapName::heap_name("test_frozen_set"));
+    let restored = round_trip_heap_ref(&heap_ref)?;
+
+    // Set has Drop (SmallSet), so it's in the drop bump.
+    let headers = restored.collect_drop_headers_ordered();
+    assert_eq!(headers.len(), 1);
+    let set: &FrozenSet = headers[0].unpack().downcast_ref().unwrap();
+    assert_eq!(set.0.len(), 3);
+    // Verify values are present.
+    let values: Vec<i32> = set.0.iter().map(|v| v.unpack_i32().unwrap()).collect();
+    assert!(values.contains(&1));
+    assert!(values.contains(&2));
+    assert!(values.contains(&3));
+
+    Ok(())
+}
+
+#[test]
 fn test_static_frozen_value_round_trip() -> crate::Result<()> {
     // Test that FrozenValues pointing to static values (not on any heap)
     // survive a round-trip through pagable serialization.

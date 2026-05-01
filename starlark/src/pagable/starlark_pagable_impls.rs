@@ -27,6 +27,7 @@ use pagable::PagableDeserialize;
 use pagable::PagableSerialize;
 use starlark_map::Hashed;
 use starlark_map::small_map::SmallMap;
+use starlark_map::small_set::SmallSet;
 
 use crate::pagable::starlark_deserialize::StarlarkDeserialize;
 use crate::pagable::starlark_deserialize::StarlarkDeserializeContext;
@@ -145,6 +146,32 @@ impl<K: SmallMapKeyDeserialize, V: StarlarkDeserialize> StarlarkDeserialize for 
             map.insert_hashed(hashed_k, v);
         }
         Ok(map)
+    }
+}
+
+// ============================================================================
+// SmallSet
+// ============================================================================
+
+impl<T: StarlarkSerialize> StarlarkSerialize for SmallSet<T> {
+    fn starlark_serialize(&self, ctx: &mut dyn StarlarkSerializeContext) -> crate::Result<()> {
+        self.len().pagable_serialize(ctx.pagable())?;
+        for v in self.iter() {
+            v.starlark_serialize(ctx)?;
+        }
+        Ok(())
+    }
+}
+
+impl<T: SmallMapKeyDeserialize> StarlarkDeserialize for SmallSet<T> {
+    fn starlark_deserialize(ctx: &mut dyn StarlarkDeserializeContext<'_>) -> crate::Result<Self> {
+        let len = usize::pagable_deserialize(ctx.pagable())?;
+        let mut set = SmallSet::with_capacity(len);
+        for _ in 0..len {
+            let hashed = T::starlark_deserialize_hashed(ctx)?;
+            set.insert_hashed(hashed);
+        }
+        Ok(set)
     }
 }
 
