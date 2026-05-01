@@ -88,3 +88,6 @@ pub(crate) struct CallExit<D: MaybeDrop + 'static> {
 impl<'v, D: MaybeDrop> StarlarkValue<'v> for CallExit<D> {
     type Canonical = Self;
 }
+
+crate::register_avalue_simple_frozen!(CallExit<NeedsDrop>);
+crate::register_avalue_simple_frozen!(CallExit<NoDrop>);

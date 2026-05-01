@@ -32,12 +32,11 @@ use crate::pagable::vtable_register::VtableRegistered;
 use crate::values::AllocValue;
 use crate::values::Freeze;
 use crate::values::Heap;
-use crate::values::HeapSendable;
 use crate::values::StarlarkValue;
 use crate::values::Trace;
 use crate::values::Value;
 use crate::values::ValueLike;
-use crate::values::layout::heap::send::HeapSyncable;
+use crate::values::layout::avalue::AValueSimpleBound;
 
 /// Allocate arbitrary value on the starlark heap without implementing full [`StarlarkValue`].
 ///
@@ -94,27 +93,11 @@ where
     type Canonical = Self;
 }
 
-#[cfg(feature = "pagable")]
 impl<'v, T> AllocValue<'v> for StarlarkAnyComplex<T>
 where
     Self: StarlarkValue<'v> + Freeze,
     T: Trace<'v> + ProvidesStaticType<'v>,
-    <Self as Freeze>::Frozen:
-        StarlarkValue<'static> + HeapSendable<'static> + HeapSyncable<'static> + VtableRegistered,
-    <Self as ProvidesStaticType<'v>>::StaticType: Send,
-{
-    fn alloc_value(self, heap: Heap<'v>) -> Value<'v> {
-        heap.alloc_complex(self)
-    }
-}
-
-#[cfg(not(feature = "pagable"))]
-impl<'v, T> AllocValue<'v> for StarlarkAnyComplex<T>
-where
-    Self: StarlarkValue<'v> + Freeze,
-    T: Trace<'v> + ProvidesStaticType<'v>,
-    <Self as Freeze>::Frozen:
-        StarlarkValue<'static> + HeapSendable<'static> + HeapSyncable<'static>,
+    <Self as Freeze>::Frozen: AValueSimpleBound<'static>,
     <Self as ProvidesStaticType<'v>>::StaticType: Send,
 {
     fn alloc_value(self, heap: Heap<'v>) -> Value<'v> {

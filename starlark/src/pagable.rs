@@ -45,7 +45,10 @@ pub(crate) use vtable_registry_stub::DeserTypeId;
 #[cfg(not(feature = "pagable"))]
 pub(crate) use vtable_registry_stub::lookup_vtable;
 
-pub(crate) mod vtable_register;
+/// Runtime-registration marker trait for vtable lookup at deserialize time.
+pub mod vtable_register;
+
+pub use vtable_register::VtableRegistered;
 
 pub(crate) mod static_value;
 pub use static_value::StaticValueEntry;
