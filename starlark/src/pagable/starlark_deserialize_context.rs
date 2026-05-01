@@ -30,6 +30,7 @@ use crate::pagable::error::PagableError;
 use crate::pagable::heap_ref_id::HeapRefId;
 use crate::pagable::serialized_frozen_value::SerializedFrozenValue;
 use crate::pagable::starlark_deserialize::StarlarkDeserializeContext;
+use crate::pagable::static_value::get_frozen_value_by_static_id;
 use crate::values::FrozenValue;
 use crate::values::layout::heap::arena::ArenaOffset;
 use crate::values::layout::heap::arena::BumpKind;
@@ -327,6 +328,12 @@ impl<'de> StarlarkDeserializeContext<'de> for StarlarkDeserializerImpl<'_, 'de> 
                 let inline = InlineInt::try_from(v)
                     .map_err(|_| anyhow::anyhow!("Integer {} does not fit in InlineInt", v))?;
                 Ok(FrozenValue::new_int(inline))
+            }
+            SerializedFrozenValue::Static(id) => {
+                let fv = get_frozen_value_by_static_id(id).ok_or_else(|| {
+                    anyhow::anyhow!("Static value ID {:?} not found in inventory registry", id)
+                })?;
+                Ok(fv)
             }
         }
     }

@@ -27,6 +27,7 @@ use pagable::PagableSerializer;
 use crate::pagable::heap_ref_id::HeapRefId;
 use crate::pagable::serialized_frozen_value::SerializedFrozenValue;
 use crate::pagable::starlark_serialize::StarlarkSerializeContext;
+use crate::pagable::static_value::get_static_value_id;
 use crate::values::FrozenValue;
 use crate::values::layout::heap::arena::ArenaOffset;
 use crate::values::layout::heap::heap_type::FrozenHeapRef;
@@ -152,6 +153,13 @@ impl StarlarkSerializeContext for StarlarkSerializerImpl<'_> {
     fn serialize_frozen_value(&mut self, fv: FrozenValue) -> crate::Result<()> {
         match fv.ptr_value().tags() {
             PointerTags::OtherFrozen | PointerTags::StrFrozen => {
+                // Check if this is a static value first.
+                if let Some(static_id) = get_static_value_id(fv) {
+                    let serialized = SerializedFrozenValue::Static(static_id);
+                    serialized.pagable_serialize(self.pagable)?;
+                    return Ok(());
+                }
+
                 let is_str = fv.ptr_value().tags() == PointerTags::StrFrozen;
                 let raw_ptr = fv.ptr_value().ptr_value_untagged();
                 let heap_id = self

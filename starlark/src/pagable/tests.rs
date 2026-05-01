@@ -27,6 +27,7 @@ use starlark_derive::StarlarkPagable;
 use starlark_derive::starlark_value;
 
 use crate as starlark;
+use crate::const_frozen_string;
 use crate::starlark_simple_value;
 use crate::values::FrozenHeap;
 use crate::values::FrozenHeapRef;
@@ -1058,6 +1059,104 @@ fn test_owned_frozen_value_typed_round_trip() -> crate::Result<()> {
     // Verify the restored value via Deref (OwnedFrozenValueTyped<T> derefs to T).
     assert_eq!(restored.flag, false);
     assert_eq!(restored.count, 99);
+
+    Ok(())
+}
+
+#[test]
+fn test_static_frozen_value_round_trip() -> crate::Result<()> {
+    // Test that FrozenValues pointing to static values (not on any heap)
+    // survive a round-trip through pagable serialization.
+    //
+    // Static values include: None, True, False, empty tuple, static strings
+    // (const_frozen_string!), and other inventory-registered statics.
+    let heap = FrozenHeap::new();
+
+    // Create RefData values that hold various static FrozenValues.
+    let none_fv = FrozenValue::new_none();
+    let true_fv = FrozenValue::new_bool(true);
+    let false_fv = FrozenValue::new_bool(false);
+    let empty_tuple_fv = FrozenValue::new_empty_tuple();
+    let static_str_fv = const_frozen_string!("static_test_str").to_frozen_value();
+
+    heap.alloc_simple(RefData {
+        label: 1,
+        target: none_fv,
+    });
+    heap.alloc_simple(RefData {
+        label: 2,
+        target: true_fv,
+    });
+    heap.alloc_simple(RefData {
+        label: 3,
+        target: false_fv,
+    });
+    heap.alloc_simple(RefData {
+        label: 4,
+        target: empty_tuple_fv,
+    });
+    heap.alloc_simple(RefData {
+        label: 5,
+        target: static_str_fv,
+    });
+
+    let heap_ref = heap.into_ref_named(TestHeapName::heap_name("test_static"));
+
+    // Round-trip.
+    let restored = round_trip_heap_ref(&heap_ref)?;
+
+    let undrop_headers = restored.collect_undrop_headers_ordered();
+    assert_eq!(undrop_headers.len(), 5);
+
+    // Verify None.
+    let ref0: &RefData = undrop_headers[0].unpack().downcast_ref().unwrap();
+    assert_eq!(ref0.label, 1);
+    assert!(ref0.target.is_none());
+    // Static values should preserve pointer identity (same static address).
+    assert_eq!(
+        ref0.target.ptr_value().ptr_value_untagged(),
+        none_fv.ptr_value().ptr_value_untagged(),
+        "None should point to the same static address"
+    );
+
+    // Verify True.
+    let ref1: &RefData = undrop_headers[1].unpack().downcast_ref().unwrap();
+    assert_eq!(ref1.label, 2);
+    assert_eq!(ref1.target.unpack_bool(), Some(true));
+    assert_eq!(
+        ref1.target.ptr_value().ptr_value_untagged(),
+        true_fv.ptr_value().ptr_value_untagged(),
+        "True should point to the same static address"
+    );
+
+    // Verify False.
+    let ref2: &RefData = undrop_headers[2].unpack().downcast_ref().unwrap();
+    assert_eq!(ref2.label, 3);
+    assert_eq!(ref2.target.unpack_bool(), Some(false));
+    assert_eq!(
+        ref2.target.ptr_value().ptr_value_untagged(),
+        false_fv.ptr_value().ptr_value_untagged(),
+        "False should point to the same static address"
+    );
+
+    // Verify empty tuple.
+    let ref3: &RefData = undrop_headers[3].unpack().downcast_ref().unwrap();
+    assert_eq!(ref3.label, 4);
+    assert_eq!(
+        ref3.target.ptr_value().ptr_value_untagged(),
+        empty_tuple_fv.ptr_value().ptr_value_untagged(),
+        "Empty tuple should point to the same static address"
+    );
+
+    // Verify static string.
+    let ref4: &RefData = undrop_headers[4].unpack().downcast_ref().unwrap();
+    assert_eq!(ref4.label, 5);
+    assert_eq!(ref4.target.unpack_str(), Some("static_test_str"));
+    assert_eq!(
+        ref4.target.ptr_value().ptr_value_untagged(),
+        static_str_fv.ptr_value().ptr_value_untagged(),
+        "Static string should point to the same static address"
+    );
 
     Ok(())
 }

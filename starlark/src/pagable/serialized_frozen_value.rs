@@ -23,6 +23,7 @@ use pagable::PagableSerialize;
 use pagable::PagableSerializer;
 
 use crate::pagable::heap_ref_id::HeapRefId;
+use crate::pagable::static_value::StaticValueId;
 use crate::values::layout::heap::arena::ArenaOffset;
 
 /// Wire representation of a `FrozenValue`.
@@ -40,14 +41,15 @@ pub(super) enum SerializedFrozenValue {
     },
     /// Inline integer (not a heap pointer).
     InlineInt(i32),
-    // Future:
-    // Static(StaticValueId),
+    /// A statically-allocated value (not on any heap).
+    Static(StaticValueId),
 }
 
 /// Tag bytes for the wire format.
 const TAG_SAME_HEAP_PTR: u8 = 0;
 const TAG_INLINE_INT: u8 = 1;
 const TAG_CROSS_HEAP_PTR: u8 = 2;
+const TAG_STATIC: u8 = 3;
 
 impl PagableSerialize for SerializedFrozenValue {
     fn pagable_serialize(&self, serializer: &mut dyn PagableSerializer) -> pagable::Result<()> {
@@ -70,6 +72,10 @@ impl PagableSerialize for SerializedFrozenValue {
             SerializedFrozenValue::InlineInt(v) => {
                 TAG_INLINE_INT.pagable_serialize(serializer)?;
                 v.pagable_serialize(serializer)?;
+            }
+            SerializedFrozenValue::Static(id) => {
+                TAG_STATIC.pagable_serialize(serializer)?;
+                id.pagable_serialize(serializer)?;
             }
         }
         Ok(())
@@ -100,6 +106,10 @@ impl<'de> PagableDeserialize<'de> for SerializedFrozenValue {
             TAG_INLINE_INT => {
                 let v = i32::pagable_deserialize(deserializer)?;
                 Ok(SerializedFrozenValue::InlineInt(v))
+            }
+            TAG_STATIC => {
+                let id = StaticValueId::pagable_deserialize(deserializer)?;
+                Ok(SerializedFrozenValue::Static(id))
             }
             _ => Err(anyhow::anyhow!(
                 "Invalid SerializedFrozenValue tag: {}",
