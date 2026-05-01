@@ -1174,6 +1174,37 @@ fn test_native_codemap_round_trip() -> crate::Result<()> {
 }
 
 #[test]
+fn test_frozen_dict_round_trip() -> crate::Result<()> {
+    use crate::values::dict::AllocDict;
+    use crate::values::types::dict::value::FrozenDict;
+
+    let heap = FrozenHeap::new();
+
+    // Dict with entries: {"hello": 1, "world": 2}.
+    heap.alloc(AllocDict([("hello", 1), ("world", 2)]));
+
+    let heap_ref = heap.into_ref_named(TestHeapName::heap_name("test_frozen_dict"));
+    let restored = round_trip_heap_ref(&heap_ref)?;
+
+    // Dict has Drop (SmallMap), so it's in the drop bump.
+    let headers = restored.collect_drop_headers_ordered();
+    assert_eq!(headers.len(), 1);
+    let dict: &FrozenDict = headers[0].unpack().downcast_ref().unwrap();
+    assert_eq!(dict.0.content.len(), 2);
+    // Verify keys and values are present.
+    let keys: Vec<&str> = dict
+        .0
+        .content
+        .keys()
+        .map(|k| k.to_value().unpack_str().unwrap())
+        .collect();
+    assert!(keys.contains(&"hello"));
+    assert!(keys.contains(&"world"));
+
+    Ok(())
+}
+
+#[test]
 fn test_static_frozen_value_round_trip() -> crate::Result<()> {
     // Test that FrozenValues pointing to static values (not on any heap)
     // survive a round-trip through pagable serialization.
