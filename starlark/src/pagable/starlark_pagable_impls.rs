@@ -21,6 +21,7 @@
 //! This allows these types to be used directly in `#[derive(StarlarkPagable)]`
 //! without needing `#[starlark_pagable(pagable)]`.
 
+use std::marker::PhantomData;
 use std::num::NonZeroI32;
 
 use pagable::PagableDeserialize;
@@ -221,6 +222,66 @@ impl SmallMapKeyDeserialize for FrozenStringValue {
     ) -> crate::Result<Hashed<Self>> {
         let fsv = FrozenStringValue::starlark_deserialize(ctx)?;
         Ok(fsv.get_hashed())
+    }
+}
+
+// ============================================================================
+// Box<[T]> (boxed slice)
+// ============================================================================
+
+impl<T: StarlarkSerialize> StarlarkSerialize for Box<[T]> {
+    fn starlark_serialize(&self, ctx: &mut dyn StarlarkSerializeContext) -> crate::Result<()> {
+        self.len().pagable_serialize(ctx.pagable())?;
+        for elem in self.iter() {
+            elem.starlark_serialize(ctx)?;
+        }
+        Ok(())
+    }
+}
+
+impl<T: StarlarkDeserialize> StarlarkDeserialize for Box<[T]> {
+    fn starlark_deserialize(ctx: &mut dyn StarlarkDeserializeContext<'_>) -> crate::Result<Self> {
+        let len = usize::pagable_deserialize(ctx.pagable())?;
+        let mut v = Vec::with_capacity(len);
+        for _ in 0..len {
+            v.push(T::starlark_deserialize(ctx)?);
+        }
+        Ok(v.into_boxed_slice())
+    }
+}
+
+// ============================================================================
+// PhantomData (zero-size, no-op ser/de)
+// ============================================================================
+
+impl<T: ?Sized> StarlarkSerialize for PhantomData<T> {
+    fn starlark_serialize(&self, _ctx: &mut dyn StarlarkSerializeContext) -> crate::Result<()> {
+        Ok(())
+    }
+}
+
+impl<T: ?Sized> StarlarkDeserialize for PhantomData<T> {
+    fn starlark_deserialize(_ctx: &mut dyn StarlarkDeserializeContext<'_>) -> crate::Result<Self> {
+        Ok(PhantomData)
+    }
+}
+
+// ============================================================================
+// TypeInstanceId
+// ============================================================================
+
+// TODO(nero): need reimpl TypeInstanceId to support pagable
+impl StarlarkSerialize for crate::values::types::type_instance_id::TypeInstanceId {
+    fn starlark_serialize(&self, ctx: &mut dyn StarlarkSerializeContext) -> crate::Result<()> {
+        self.0.pagable_serialize(ctx.pagable())?;
+        Ok(())
+    }
+}
+
+impl StarlarkDeserialize for crate::values::types::type_instance_id::TypeInstanceId {
+    fn starlark_deserialize(ctx: &mut dyn StarlarkDeserializeContext<'_>) -> crate::Result<Self> {
+        let v = u64::pagable_deserialize(ctx.pagable())?;
+        Ok(crate::values::types::type_instance_id::TypeInstanceId(v))
     }
 }
 
