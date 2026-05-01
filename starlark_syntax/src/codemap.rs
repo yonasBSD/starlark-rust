@@ -42,10 +42,6 @@ use allocative::Allocative;
 use dupe::Dupe;
 use once_cell::sync::Lazy;
 use pagable::Pagable;
-use pagable::PagableDeserialize;
-use pagable::PagableDeserializer;
-use pagable::PagableSerialize;
-use pagable::PagableSerializer;
 use pagable::StaticValue;
 
 use crate::fast_string;
