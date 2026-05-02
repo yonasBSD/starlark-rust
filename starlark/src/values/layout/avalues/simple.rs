@@ -117,7 +117,7 @@ impl FrozenHeap {
         self.alloc_raw(simple(val))
     }
 
-    /// Allocate a simple [`StarlarkValue`] on this heap.
+    /// Allocate a simple [`StarlarkValue`](crate::values::StarlarkValue) on this heap.
     ///
     /// Simple value is any starlark value which:
     /// * bound by `'static` lifetime (in particular, it cannot contain references to other `Value`s)
@@ -132,7 +132,7 @@ impl FrozenHeap {
 }
 
 impl<'v> Heap<'v> {
-    /// Allocate a simple [`StarlarkValue`] on this heap.
+    /// Allocate a simple [`StarlarkValue`](crate::values::StarlarkValue) on this heap.
     ///
     /// Simple value is any starlark value which:
     /// * bound by `'static` lifetime (in particular, it cannot contain references to other `Value`s)
