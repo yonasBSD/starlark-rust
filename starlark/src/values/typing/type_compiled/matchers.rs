@@ -17,6 +17,7 @@
 
 use allocative::Allocative;
 use dupe::Dupe;
+use pagable::Pagable;
 use starlark_derive::type_matcher;
 
 use crate as starlark;
@@ -31,7 +32,6 @@ use crate::values::list::value::FrozenList;
 use crate::values::set::refs::SetRef;
 use crate::values::set::value::FrozenSet;
 use crate::values::starlark_type_id::StarlarkTypeId;
-use crate::values::starlark_type_id::StarlarkTypeIdAligned;
 use crate::values::tuple::value::Tuple;
 use crate::values::types::int::int_or_big::StarlarkIntRef;
 use crate::values::typing::type_compiled::matcher::TypeMatcher;
@@ -321,22 +321,24 @@ impl TypeMatcher for IsNone {
     }
 }
 
-#[derive(Allocative, Debug, Clone)]
+// Matches values by `StarlarkTypeId`. Ideally store `StarlarkTypeId`
+// directly, but it wraps a `std::any::TypeId` and isn't pagable. Instead
+// store a `TyStarlarkValue` which is pagable and extract the id from it at
+// match time.
+#[derive(Allocative, Debug, Clone, Pagable)]
 pub(crate) struct StarlarkTypeIdMatcher {
-    starlark_type_id: StarlarkTypeIdAligned,
+    ty: TyStarlarkValue,
 }
 
 impl StarlarkTypeIdMatcher {
     pub(crate) fn new(ty: TyStarlarkValue) -> StarlarkTypeIdMatcher {
-        StarlarkTypeIdMatcher {
-            starlark_type_id: StarlarkTypeIdAligned::new(ty.starlark_type_id()),
-        }
+        StarlarkTypeIdMatcher { ty }
     }
 }
 
 #[type_matcher]
 impl TypeMatcher for StarlarkTypeIdMatcher {
     fn matches(&self, value: Value) -> bool {
-        value.starlark_type_id() == self.starlark_type_id.get()
+        value.starlark_type_id() == self.ty.starlark_type_id()
     }
 }
