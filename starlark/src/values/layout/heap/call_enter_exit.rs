@@ -26,6 +26,7 @@ use starlark_derive::starlark_value;
 use crate as starlark;
 use crate::any::ProvidesStaticType;
 use crate::eval::runtime::profile::instant::ProfilerInstant;
+use crate::typing::HasTyVTable;
 use crate::values::StarlarkValue;
 use crate::values::Trace;
 use crate::values::Value;
@@ -67,16 +68,17 @@ pub(crate) struct CallEnter<'v, D: MaybeDrop + 'static> {
 }
 
 #[starlark_value(type = "call_enter")]
-impl<'v, D: MaybeDrop + Trace<'v> + 'v> StarlarkValue<'v> for CallEnter<'v, D> {
+impl<'v, D: MaybeDrop + Trace<'v> + 'v> StarlarkValue<'v> for CallEnter<'v, D>
+where
+    Self: HasTyVTable,
+{
     type Canonical = Self;
 }
 
-#[cfg(feature = "pagable")]
-impl<'v, D: MaybeDrop + 'static> crate::typing::starlark_value::HasTyVTable for CallEnter<'v, D> {
-    const TY_VTABLE_STATIC: pagable::StaticValue<
-        crate::typing::starlark_value::TyStarlarkValueVTable,
-    > = crate::typing::starlark_value::UNREGISTERED_VTABLE_STATIC;
-}
+// `MaybeDrop` has exactly two implementors: `NeedsDrop` and `NoDrop`. Register
+// both concrete instantiations.
+crate::register_ty_starlark_value!(CallEnter<'_, NeedsDrop>);
+crate::register_ty_starlark_value!(CallEnter<'_, NoDrop>);
 
 #[derive(
     Debug,
@@ -94,7 +96,7 @@ pub(crate) struct CallExit<D: MaybeDrop + 'static> {
 #[starlark_value(type = "call_exit")]
 impl<'v, D: MaybeDrop> StarlarkValue<'v> for CallExit<D>
 where
-    CallExit<D>: crate::typing::starlark_value::HasTyVTable,
+    Self: HasTyVTable,
 {
     type Canonical = Self;
 }
