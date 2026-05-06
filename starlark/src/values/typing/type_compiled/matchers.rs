@@ -38,7 +38,7 @@ use crate::values::typing::type_compiled::matcher::TypeMatcher;
 use crate::values::typing::type_compiled::matcher::TypeMatcherBox;
 use crate::values::typing::type_compiled::matcher::TypeMatcherRegistered;
 
-#[derive(Clone, Copy, Dupe, Allocative, Debug)]
+#[derive(Clone, Copy, Dupe, Allocative, Debug, Pagable)]
 pub(crate) struct IsAny;
 
 #[type_matcher]
@@ -52,7 +52,7 @@ impl TypeMatcher for IsAny {
     }
 }
 
-#[derive(Clone, Copy, Dupe, Allocative, Debug)]
+#[derive(Clone, Copy, Dupe, Allocative, Debug, Pagable)]
 pub(crate) struct IsNever;
 
 #[type_matcher]
@@ -62,7 +62,7 @@ impl TypeMatcher for IsNever {
     }
 }
 
-#[derive(Clone, Copy, Dupe, Allocative, Debug)]
+#[derive(Clone, Copy, Dupe, Allocative, Debug, Pagable)]
 pub(crate) struct IsStr;
 
 #[type_matcher]
@@ -72,7 +72,7 @@ impl TypeMatcher for IsStr {
     }
 }
 
-#[derive(Clone, Copy, Dupe, Allocative, Debug)]
+#[derive(Clone, Copy, Dupe, Allocative, Debug, Pagable)]
 pub(crate) struct IsList;
 
 #[type_matcher]
@@ -82,7 +82,7 @@ impl TypeMatcher for IsList {
     }
 }
 
-#[derive(Clone, Allocative, Debug)]
+#[derive(Clone, Allocative, Debug, Pagable)]
 pub(crate) struct IsListOf<I: TypeMatcher>(pub(crate) I);
 
 unsafe impl<I: TypeMatcher> TypeMatcherRegistered for IsListOf<I> {}
@@ -99,7 +99,7 @@ impl<I: TypeMatcher> TypeMatcher for IsListOf<I> {
     }
 }
 
-#[derive(Clone, Allocative, Debug)]
+#[derive(Clone, Allocative, Debug, Pagable)]
 pub(crate) struct IsTupleOf<A: TypeMatcher>(pub(crate) A);
 
 unsafe impl<A: TypeMatcher> TypeMatcherRegistered for IsTupleOf<A> {}
@@ -115,7 +115,7 @@ impl<A: TypeMatcher> TypeMatcher for IsTupleOf<A> {
     }
 }
 
-#[derive(Clone, Allocative, Debug)]
+#[derive(Clone, Allocative, Debug, Pagable)]
 pub(crate) struct IsTupleElems(pub(crate) Vec<TypeMatcherBox>);
 
 #[type_matcher]
@@ -130,7 +130,7 @@ impl TypeMatcher for IsTupleElems {
     }
 }
 
-#[derive(Clone, Allocative, Debug)]
+#[derive(Clone, Allocative, Debug, Pagable)]
 pub(crate) struct IsTupleElems0;
 
 #[type_matcher]
@@ -143,7 +143,7 @@ impl TypeMatcher for IsTupleElems0 {
     }
 }
 
-#[derive(Clone, Allocative, Debug)]
+#[derive(Clone, Allocative, Debug, Pagable)]
 pub(crate) struct IsTupleElems1<A: TypeMatcher>(pub(crate) A);
 
 unsafe impl<A: TypeMatcher> TypeMatcherRegistered for IsTupleElems1<A> {}
@@ -158,7 +158,7 @@ impl<A: TypeMatcher> TypeMatcher for IsTupleElems1<A> {
     }
 }
 
-#[derive(Clone, Allocative, Debug)]
+#[derive(Clone, Allocative, Debug, Pagable)]
 pub(crate) struct IsTupleElems2<A: TypeMatcher, B: TypeMatcher>(pub(crate) A, pub(crate) B);
 
 unsafe impl<A: TypeMatcher, B: TypeMatcher> TypeMatcherRegistered for IsTupleElems2<A, B> {}
@@ -174,7 +174,7 @@ impl<A: TypeMatcher, B: TypeMatcher> TypeMatcher for IsTupleElems2<A, B> {
     }
 }
 
-#[derive(Clone, Copy, Dupe, Allocative, Debug)]
+#[derive(Clone, Copy, Dupe, Allocative, Debug, Pagable)]
 pub(crate) struct IsDict;
 
 #[type_matcher]
@@ -184,7 +184,7 @@ impl TypeMatcher for IsDict {
     }
 }
 
-#[derive(Clone, Allocative, Debug)]
+#[derive(Clone, Allocative, Debug, Pagable)]
 pub(crate) struct IsDictOf<K: TypeMatcher, V: TypeMatcher>(pub(crate) K, pub(crate) V);
 
 unsafe impl<K: TypeMatcher, V: TypeMatcher> TypeMatcherRegistered for IsDictOf<K, V> {}
@@ -207,7 +207,7 @@ impl<K: TypeMatcher, V: TypeMatcher> TypeMatcher for IsDictOf<K, V> {
     }
 }
 
-#[derive(Clone, Copy, Dupe, Allocative, Debug)]
+#[derive(Clone, Copy, Dupe, Allocative, Debug, Pagable)]
 pub(crate) struct IsSet;
 
 #[type_matcher]
@@ -217,7 +217,7 @@ impl TypeMatcher for IsSet {
     }
 }
 
-#[derive(Clone, Allocative, Debug)]
+#[derive(Clone, Allocative, Debug, Pagable)]
 pub(crate) struct IsSetOf<I: TypeMatcher>(pub(crate) I);
 
 unsafe impl<I: TypeMatcher> TypeMatcherRegistered for IsSetOf<I> {}
@@ -234,7 +234,7 @@ impl<I: TypeMatcher> TypeMatcher for IsSetOf<I> {
     }
 }
 
-#[derive(Clone, Allocative, Debug)]
+#[derive(Clone, Allocative, Debug, Pagable)]
 pub(crate) struct IsAnyOfTwo<A: TypeMatcher, B: TypeMatcher>(pub(crate) A, pub(crate) B);
 
 unsafe impl<A: TypeMatcher, B: TypeMatcher> TypeMatcherRegistered for IsAnyOfTwo<A, B> {}
@@ -251,7 +251,7 @@ impl<A: TypeMatcher, B: TypeMatcher> TypeMatcher for IsAnyOfTwo<A, B> {
     }
 }
 
-#[derive(Clone, Allocative, Debug)]
+#[derive(Clone, Allocative, Debug, Pagable)]
 pub(crate) struct IsAnyOf(pub(crate) Vec<TypeMatcherBox>);
 
 #[type_matcher]
@@ -261,7 +261,7 @@ impl TypeMatcher for IsAnyOf {
     }
 }
 
-#[derive(Allocative, Clone, Copy, Dupe, Debug)]
+#[derive(Allocative, Clone, Copy, Dupe, Debug, Pagable)]
 pub(crate) struct IsCallable;
 
 #[type_matcher]
@@ -271,7 +271,7 @@ impl TypeMatcher for IsCallable {
     }
 }
 
-#[derive(Allocative, Clone, Copy, Dupe, Debug)]
+#[derive(Allocative, Clone, Copy, Dupe, Debug, Pagable)]
 pub(crate) struct IsType;
 
 #[type_matcher]
@@ -281,7 +281,7 @@ impl TypeMatcher for IsType {
     }
 }
 
-#[derive(Copy, Clone, Dupe, Debug, Allocative)]
+#[derive(Copy, Clone, Dupe, Debug, Allocative, Pagable)]
 pub(crate) struct IsIterable;
 
 #[type_matcher]
@@ -291,7 +291,7 @@ impl TypeMatcher for IsIterable {
     }
 }
 
-#[derive(Clone, Copy, Dupe, Allocative, Debug)]
+#[derive(Clone, Copy, Dupe, Allocative, Debug, Pagable)]
 pub(crate) struct IsInt;
 
 #[type_matcher]
@@ -301,7 +301,7 @@ impl TypeMatcher for IsInt {
     }
 }
 
-#[derive(Clone, Copy, Dupe, Allocative, Debug)]
+#[derive(Clone, Copy, Dupe, Allocative, Debug, Pagable)]
 pub(crate) struct IsBool;
 
 #[type_matcher]
@@ -311,7 +311,7 @@ impl TypeMatcher for IsBool {
     }
 }
 
-#[derive(Clone, Copy, Dupe, Allocative, Debug)]
+#[derive(Clone, Copy, Dupe, Allocative, Debug, Pagable)]
 pub(crate) struct IsNone;
 
 #[type_matcher]

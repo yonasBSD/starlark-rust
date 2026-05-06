@@ -47,7 +47,7 @@ use crate::values::types::namespace::value::Namespace;
 use crate::values::typing::type_compiled::alloc::TypeMatcherAlloc;
 use crate::values::typing::type_compiled::matcher::TypeMatcher;
 
-#[derive(Allocative, Eq, PartialEq, Hash, Debug, Clone, Copy, Dupe)]
+#[derive(Allocative, Eq, PartialEq, Hash, Debug, Clone, Copy, Dupe, Pagable)]
 struct NamespaceMatcher;
 
 #[type_matcher]

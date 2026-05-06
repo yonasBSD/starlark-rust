@@ -24,6 +24,7 @@ use std::hash::Hasher;
 
 use allocative::Allocative;
 use dupe::Dupe;
+use pagable::Pagable;
 use starlark_derive::starlark_module;
 use starlark_derive::starlark_value;
 use starlark_derive::type_matcher;
@@ -164,7 +165,7 @@ where
 }
 
 #[doc(hidden)]
-#[derive(Hash, Eq, PartialEq, Debug, Clone, Allocative)]
+#[derive(Hash, Eq, PartialEq, Debug, Clone, Allocative, Pagable)]
 pub struct DummyTypeMatcher;
 
 #[type_matcher]

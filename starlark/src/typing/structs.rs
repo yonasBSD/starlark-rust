@@ -22,6 +22,7 @@ use std::sync::Arc;
 
 use allocative::Allocative;
 use dupe::Dupe;
+use pagable::Pagable;
 use pagable::PagablePanic;
 use pagable::pagable_typetag;
 use starlark_derive::type_matcher;
@@ -42,7 +43,7 @@ use crate::values::structs::StructRef;
 use crate::values::typing::type_compiled::alloc::TypeMatcherAlloc;
 use crate::values::typing::type_compiled::matcher::TypeMatcher;
 
-#[derive(Allocative, Eq, PartialEq, Hash, Debug, Clone, Copy, Dupe)]
+#[derive(Allocative, Eq, PartialEq, Hash, Debug, Clone, Copy, Dupe, Pagable)]
 struct StructMatcher;
 
 #[type_matcher]

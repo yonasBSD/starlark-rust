@@ -17,6 +17,7 @@
 
 use allocative::Allocative;
 use dupe::Dupe;
+use pagable::Pagable;
 use starlark_derive::type_matcher;
 
 use crate as starlark;
@@ -25,7 +26,7 @@ use crate::values::enumeration::EnumValue;
 use crate::values::types::type_instance_id::TypeInstanceId;
 use crate::values::typing::type_compiled::matcher::TypeMatcher;
 
-#[derive(Hash, Debug, Eq, PartialEq, Clone, Dupe, Allocative)]
+#[derive(Hash, Debug, Eq, PartialEq, Clone, Dupe, Allocative, Pagable)]
 pub(crate) struct EnumTypeMatcher {
     pub(crate) id: TypeInstanceId,
 }

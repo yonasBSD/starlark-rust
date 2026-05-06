@@ -18,6 +18,7 @@
 use std::fmt::Debug;
 
 use allocative::Allocative;
+use pagable::Pagable;
 use starlark_derive::type_matcher;
 
 use crate as starlark;
@@ -63,7 +64,7 @@ impl<T> TypeMatcherBase for T where T: Allocative + Debug + Clone + Sized + Send
 
 /// Runtime type matcher. E.g. when `isinstance(1, int)` is called,
 /// implementation of `TypeMatcher` for `int` is used.
-pub trait TypeMatcher: TypeMatcherBase {
+pub trait TypeMatcher: TypeMatcherBase + Pagable {
     /// Check if the value matches the type.
     fn matches(&self, value: Value) -> bool;
     /// True if this matcher matches any value.
@@ -93,7 +94,7 @@ impl<T: TypeMatcher> TypeMatcherDyn for T {
     }
 }
 
-#[derive(Debug, Allocative)]
+#[derive(Debug, Allocative, pagable::PagablePanic)]
 pub(crate) struct TypeMatcherBox(pub(crate) Box<dyn TypeMatcherDyn>);
 
 impl TypeMatcherBox {
