@@ -16,23 +16,53 @@
  */
 
 use allocative::Allocative;
+use starlark_derive::StarlarkPagable;
 
+use crate as starlark;
 use crate::eval::ParametersSpec;
 use crate::typing::Ty;
 use crate::values::FrozenValue;
 
-#[derive(Allocative, Debug)]
+#[derive(Allocative, Debug, StarlarkPagable)]
 #[doc(hidden)]
 pub struct TyRecordData {
     /// Name of the record type.
     pub(crate) name: String,
     /// Type of record instance.
+    #[starlark_pagable(pagable)]
     pub(crate) ty_record: Ty,
     /// Type of record type.
+    #[starlark_pagable(pagable)]
     pub(crate) ty_record_type: Ty,
     /// Creating these on every invoke is pretty expensive (profiling shows)
     /// so compute them in advance and cache.
     pub(crate) parameter_spec: ParametersSpec<FrozenValue>,
+}
+
+// `pagable::Pagable` bridge for `TyRecordData`. Lets `Arc<TyRecordData>` use
+// pagable's Arc-identity dedup mechanism
+impl pagable::PagableSerialize for TyRecordData {
+    fn pagable_serialize(
+        &self,
+        serializer: &mut dyn pagable::PagableSerializer,
+    ) -> pagable::Result<()> {
+        let mut ctx = crate::pagable::StarlarkSerializerImpl::recover_from_pagable(serializer)
+            .map_err(|e: crate::Error| e.into_anyhow())?;
+        <Self as crate::pagable::StarlarkSerialize>::starlark_serialize(self, &mut ctx)
+            .map_err(|e: crate::Error| e.into_anyhow())
+    }
+}
+
+impl<'de> pagable::PagableDeserialize<'de> for TyRecordData {
+    fn pagable_deserialize<D: pagable::PagableDeserializer<'de> + ?Sized>(
+        deserializer: &mut D,
+    ) -> pagable::Result<Self> {
+        let mut ctx =
+            crate::pagable::StarlarkDeserializerImpl::recover_from_pagable(deserializer.as_dyn())
+                .map_err(|e: crate::Error| e.into_anyhow())?;
+        <Self as crate::pagable::StarlarkDeserialize>::starlark_deserialize(&mut ctx)
+            .map_err(|e: crate::Error| e.into_anyhow())
+    }
 }
 
 #[cfg(test)]

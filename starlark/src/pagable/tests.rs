@@ -1262,6 +1262,117 @@ fn test_frozen_set_round_trip() -> crate::Result<()> {
 }
 
 #[test]
+fn test_frozen_record_type_round_trip() -> crate::Result<()> {
+    use std::sync::Arc;
+
+    use starlark_map::small_map::SmallMap;
+
+    use crate::eval::ParametersSpec;
+    use crate::eval::ParametersSpecParam;
+    use crate::typing::Ty;
+    use crate::values::record::field::FieldGen;
+    use crate::values::record::record_type::FrozenRecordType;
+    use crate::values::record::ty_record_type::TyRecordData;
+    use crate::values::types::type_instance_id::TypeInstanceId;
+    use crate::values::typing::type_compiled::compiled::TypeCompiled;
+
+    let heap = FrozenHeap::new();
+
+    // Build a single Arc<TyRecordData> shared by two FrozenRecordType
+    // allocations — this exercises Arc identity preservation through pagable's
+    // dedup mechanism (TyRecordData routes through `#[starlark_pagable(pagable)]`).
+    let shared = Arc::new(TyRecordData {
+        name: "MyRec".to_owned(),
+        ty_record: Ty::any(),
+        ty_record_type: Ty::any(),
+        parameter_spec: ParametersSpec::<FrozenValue>::new_named_only(
+            "MyRec",
+            [
+                ("x", ParametersSpecParam::Required),
+                ("y", ParametersSpecParam::Required),
+            ],
+        ),
+    });
+
+    let make_fields = || {
+        let mut fields: SmallMap<String, FieldGen<FrozenValue>> = SmallMap::new();
+        fields.insert(
+            "x".to_owned(),
+            FieldGen {
+                typ: TypeCompiled::any(),
+                default: None,
+            },
+        );
+        fields.insert(
+            "y".to_owned(),
+            FieldGen {
+                typ: TypeCompiled::any(),
+                default: None,
+            },
+        );
+        fields
+    };
+
+    let id_a = TypeInstanceId::r#gen();
+    let id_b = TypeInstanceId::r#gen();
+    heap.alloc_simple(FrozenRecordType {
+        id: id_a,
+        ty_record_data: Some(shared.clone()),
+        fields: make_fields(),
+    });
+    heap.alloc_simple(FrozenRecordType {
+        id: id_b,
+        ty_record_data: Some(shared),
+        fields: make_fields(),
+    });
+
+    let heap_ref = heap.into_ref_named(TestHeapName::heap_name("test_frozen_record_type"));
+    let restored = round_trip_heap_ref(&heap_ref)?;
+
+    // RecordTypeGen has Drop (SmallMap + Arc), so it's in the drop bump.
+    let headers = restored.collect_drop_headers_ordered();
+    assert_eq!(headers.len(), 2);
+    let rt_a: &FrozenRecordType = headers[0].unpack().downcast_ref().unwrap();
+    let rt_b: &FrozenRecordType = headers[1].unpack().downcast_ref().unwrap();
+
+    // Per-record state round-trips independently.
+    assert_eq!(rt_a.id, id_a);
+    assert_eq!(rt_b.id, id_b);
+    for rt in [rt_a, rt_b] {
+        let field_names: Vec<&str> = rt.fields.keys().map(String::as_str).collect();
+        assert_eq!(field_names, vec!["x", "y"]);
+        for (_, field) in rt.fields.iter() {
+            assert!(field.default.is_none());
+        }
+    }
+
+    // ty_record_data contents survive the round-trip, including the inline
+    // parameter_spec (which is now serialized through TyRecordData's
+    // StarlarkPagable derive rather than being rebuilt on deserialize).
+    let data_a = rt_a
+        .ty_record_data
+        .as_ref()
+        .expect("ty_record_data restored");
+    let data_b = rt_b
+        .ty_record_data
+        .as_ref()
+        .expect("ty_record_data restored");
+    assert_eq!(data_a.name, "MyRec");
+    assert_eq!(data_a.ty_record, Ty::any());
+    assert_eq!(data_a.ty_record_type, Ty::any());
+    assert_eq!(data_a.parameter_spec.len(), 2);
+
+    // Arc identity preservation: both restored RecordTypeGen point at the
+    // same Arc<TyRecordData> allocation, just like the original.
+    assert!(
+        Arc::ptr_eq(data_a, data_b),
+        "pagable Arc dedup should round-trip the shared Arc<TyRecordData> as a single allocation",
+    );
+
+    Ok(())
+}
+
+#[test]
 fn test_static_frozen_value_round_trip() -> crate::Result<()> {
     // Test that FrozenValues pointing to static values (not on any heap)
     // survive a round-trip through pagable serialization.

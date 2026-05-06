@@ -83,9 +83,7 @@ struct TypeAttrs {
     bound: Vec<WherePredicate>,
     /// Overrides the type the generated impls target. When set, the impls
     /// are emitted as `impl Trait for <impl_for>` with empty `<>` and no
-    /// where clause. Field bodies switch to unqualified trait dispatch
-    /// (`Trait::method(&self.x, ...)`) so they don't depend on the original
-    /// generic parameters being in scope.
+    /// where clause.
     impl_for: Option<String>,
 }
 
@@ -424,13 +422,12 @@ fn derive_starlark_serialize_impl(input: &DeriveInput) -> syn::Result<proc_macro
     let name = &input.ident;
     let type_attrs = extract_type_attrs(&input.attrs)?;
     let impl_generics = gen_impl_generics(&input.generics, &type_attrs)?;
-    let concrete = type_attrs.impl_for.is_some();
     let bounds = effective_bounds(input, &type_attrs)?;
     let (target_ty, where_clause) = gen_target_ty(name, &input.generics, &type_attrs, &bounds)?;
 
     let body = match &input.data {
-        syn::Data::Struct(data) => gen_serialize_fields(&data.fields, concrete)?,
-        syn::Data::Enum(data) => gen_serialize_enum(name, data, concrete)?,
+        syn::Data::Struct(data) => gen_serialize_fields(&data.fields)?,
+        syn::Data::Enum(data) => gen_serialize_enum(name, data)?,
         syn::Data::Union(_) => {
             return Err(syn::Error::new_spanned(
                 input,
@@ -452,13 +449,12 @@ fn derive_starlark_serialize_impl(input: &DeriveInput) -> syn::Result<proc_macro
     })
 }
 
-fn gen_serialize_fields(fields: &Fields, concrete: bool) -> syn::Result<proc_macro2::TokenStream> {
+fn gen_serialize_fields(fields: &Fields) -> syn::Result<proc_macro2::TokenStream> {
     let mut stmts = Vec::new();
 
     for (i, field) in fields.iter().enumerate() {
         let attrs = extract_field_attrs(&field.attrs)?;
         let ident = field_ident(i, field);
-        let ty = &field.ty;
 
         if attrs.skip {
             // Referenced to suppress "unused field" lints for skipped fields.
@@ -472,13 +468,9 @@ fn gen_serialize_fields(fields: &Fields, concrete: bool) -> syn::Result<proc_mac
             quote_spanned! { field.span()=>
                 pagable::PagableSerialize::pagable_serialize(&self.#ident, ctx.pagable())?;
             }
-        } else if concrete {
-            quote_spanned! { field.span()=>
-                starlark::pagable::StarlarkSerialize::starlark_serialize(&self.#ident, ctx)?;
-            }
         } else {
             quote_spanned! { field.span()=>
-                <#ty as starlark::pagable::StarlarkSerialize>::starlark_serialize(&self.#ident, ctx)?;
+                starlark::pagable::StarlarkSerialize::starlark_serialize(&self.#ident, ctx)?;
             }
         };
         stmts.push(stmt);
@@ -499,13 +491,12 @@ fn derive_starlark_deserialize_impl(input: &DeriveInput) -> syn::Result<proc_mac
     let name = &input.ident;
     let type_attrs = extract_type_attrs(&input.attrs)?;
     let impl_generics = gen_impl_generics(&input.generics, &type_attrs)?;
-    let concrete = type_attrs.impl_for.is_some();
     let bounds = effective_bounds(input, &type_attrs)?;
     let (target_ty, where_clause) = gen_target_ty(name, &input.generics, &type_attrs, &bounds)?;
 
     let body = match &input.data {
-        syn::Data::Struct(data) => gen_deserialize_struct(name, &data.fields, concrete)?,
-        syn::Data::Enum(data) => gen_deserialize_enum(name, data, concrete)?,
+        syn::Data::Struct(data) => gen_deserialize_struct(name, &data.fields)?,
+        syn::Data::Enum(data) => gen_deserialize_enum(name, data)?,
         syn::Data::Union(_) => {
             return Err(syn::Error::new_spanned(
                 input,
@@ -540,11 +531,7 @@ fn gen_skip_value(
     }
 }
 
-fn gen_deserialize_struct(
-    name: &Ident,
-    fields: &Fields,
-    concrete: bool,
-) -> syn::Result<proc_macro2::TokenStream> {
+fn gen_deserialize_struct(name: &Ident, fields: &Fields) -> syn::Result<proc_macro2::TokenStream> {
     match fields {
         Fields::Named(named) => {
             let mut field_inits = Vec::new();
@@ -557,15 +544,11 @@ fn gen_deserialize_struct(
                     gen_skip_value(&attrs, ty, field.span())?
                 } else if attrs.pagable {
                     quote_spanned! { field.span()=>
-                        <#ty as pagable::PagableDeserialize>::pagable_deserialize(ctx.pagable())?
-                    }
-                } else if concrete {
-                    quote_spanned! { field.span()=>
-                        starlark::pagable::StarlarkDeserialize::starlark_deserialize(ctx)?
+                        pagable::PagableDeserialize::pagable_deserialize(ctx.pagable())?
                     }
                 } else {
                     quote_spanned! { field.span()=>
-                        <#ty as starlark::pagable::StarlarkDeserialize>::starlark_deserialize(ctx)?
+                        starlark::pagable::StarlarkDeserialize::starlark_deserialize(ctx)?
                     }
                 };
                 field_inits.push(quote! { #ident: #value });
@@ -584,15 +567,11 @@ fn gen_deserialize_struct(
                     gen_skip_value(&attrs, ty, field.span())?
                 } else if attrs.pagable {
                     quote_spanned! { field.span()=>
-                        <#ty as pagable::PagableDeserialize>::pagable_deserialize(ctx.pagable())?
-                    }
-                } else if concrete {
-                    quote_spanned! { field.span()=>
-                        starlark::pagable::StarlarkDeserialize::starlark_deserialize(ctx)?
+                        pagable::PagableDeserialize::pagable_deserialize(ctx.pagable())?
                     }
                 } else {
                     quote_spanned! { field.span()=>
-                        <#ty as starlark::pagable::StarlarkDeserialize>::starlark_deserialize(ctx)?
+                        starlark::pagable::StarlarkDeserialize::starlark_deserialize(ctx)?
                     }
                 };
                 field_values.push(value);
@@ -613,7 +592,6 @@ fn gen_deserialize_struct(
 fn gen_serialize_enum(
     enum_name: &Ident,
     data: &syn::DataEnum,
-    concrete: bool,
 ) -> syn::Result<proc_macro2::TokenStream> {
     if data.variants.len() > 255 {
         return Err(syn::Error::new_spanned(
@@ -642,7 +620,6 @@ fn gen_serialize_enum(
                 let mut stmts = Vec::new();
                 for (binding, field) in bindings.iter().zip(unnamed.unnamed.iter()) {
                     let attrs = extract_field_attrs(&field.attrs)?;
-                    let ty = &field.ty;
                     if attrs.skip {
                         stmts.push(quote_spanned! { field.span()=> let _ = #binding; });
                         continue;
@@ -651,13 +628,9 @@ fn gen_serialize_enum(
                         stmts.push(quote_spanned! { field.span()=>
                             pagable::PagableSerialize::pagable_serialize(#binding, ctx.pagable())?;
                         });
-                    } else if concrete {
-                        stmts.push(quote_spanned! { field.span()=>
-                            starlark::pagable::StarlarkSerialize::starlark_serialize(#binding, ctx)?;
-                        });
                     } else {
                         stmts.push(quote_spanned! { field.span()=>
-                            <#ty as starlark::pagable::StarlarkSerialize>::starlark_serialize(#binding, ctx)?;
+                            starlark::pagable::StarlarkSerialize::starlark_serialize(#binding, ctx)?;
                         });
                     }
                 }
@@ -677,7 +650,6 @@ fn gen_serialize_enum(
                 let mut stmts = Vec::new();
                 for (binding, field) in bindings.iter().zip(named.named.iter()) {
                     let attrs = extract_field_attrs(&field.attrs)?;
-                    let ty = &field.ty;
                     if attrs.skip {
                         stmts.push(quote_spanned! { field.span()=> let _ = #binding; });
                         continue;
@@ -686,13 +658,9 @@ fn gen_serialize_enum(
                         stmts.push(quote_spanned! { field.span()=>
                             pagable::PagableSerialize::pagable_serialize(#binding, ctx.pagable())?;
                         });
-                    } else if concrete {
-                        stmts.push(quote_spanned! { field.span()=>
-                            starlark::pagable::StarlarkSerialize::starlark_serialize(#binding, ctx)?;
-                        });
                     } else {
                         stmts.push(quote_spanned! { field.span()=>
-                            <#ty as starlark::pagable::StarlarkSerialize>::starlark_serialize(#binding, ctx)?;
+                            starlark::pagable::StarlarkSerialize::starlark_serialize(#binding, ctx)?;
                         });
                     }
                 }
@@ -717,7 +685,6 @@ fn gen_serialize_enum(
 fn gen_deserialize_enum(
     enum_name: &Ident,
     data: &syn::DataEnum,
-    concrete: bool,
 ) -> syn::Result<proc_macro2::TokenStream> {
     let mut arms = Vec::new();
     for (idx, variant) in data.variants.iter().enumerate() {
@@ -739,15 +706,11 @@ fn gen_deserialize_enum(
                         gen_skip_value(&attrs, ty, field.span())?
                     } else if attrs.pagable {
                         quote_spanned! { field.span()=>
-                            <#ty as pagable::PagableDeserialize>::pagable_deserialize(ctx.pagable())?
-                        }
-                    } else if concrete {
-                        quote_spanned! { field.span()=>
-                            starlark::pagable::StarlarkDeserialize::starlark_deserialize(ctx)?
+                            pagable::PagableDeserialize::pagable_deserialize(ctx.pagable())?
                         }
                     } else {
                         quote_spanned! { field.span()=>
-                            <#ty as starlark::pagable::StarlarkDeserialize>::starlark_deserialize(ctx)?
+                            starlark::pagable::StarlarkDeserialize::starlark_deserialize(ctx)?
                         }
                     };
                     values.push(v);
@@ -766,15 +729,11 @@ fn gen_deserialize_enum(
                         gen_skip_value(&attrs, ty, field.span())?
                     } else if attrs.pagable {
                         quote_spanned! { field.span()=>
-                            <#ty as pagable::PagableDeserialize>::pagable_deserialize(ctx.pagable())?
-                        }
-                    } else if concrete {
-                        quote_spanned! { field.span()=>
-                            starlark::pagable::StarlarkDeserialize::starlark_deserialize(ctx)?
+                            pagable::PagableDeserialize::pagable_deserialize(ctx.pagable())?
                         }
                     } else {
                         quote_spanned! { field.span()=>
-                            <#ty as starlark::pagable::StarlarkDeserialize>::starlark_deserialize(ctx)?
+                            starlark::pagable::StarlarkDeserialize::starlark_deserialize(ctx)?
                         }
                     };
                     inits.push(quote! { #ident: #v });
