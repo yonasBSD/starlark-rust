@@ -108,14 +108,16 @@ impl AllocFrozenValue for TypingCallable {
     Debug,
     ProvidesStaticType,
     NoSerialize,
-    derive_more::Display
+    derive_more::Display,
+    StarlarkPagable
 )]
 #[display("{}", callable)]
 pub(crate) struct TypingCallableAt2 {
+    #[starlark_pagable(pagable)]
     callable: TyCallable,
 }
 
-#[starlark_value(type = "typing.Callable")]
+#[starlark_value(type = "typing.Callable", skip_pagable)]
 impl<'v> StarlarkValue<'v> for TypingCallableAt2 {
     fn eval_type(&self) -> Option<Ty> {
         Some(Ty::basic(TyBasic::Callable(self.callable.dupe())))
