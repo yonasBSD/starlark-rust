@@ -175,3 +175,93 @@ impl TypeMatcherAlloc for TypeMatcherBoxAlloc {
         factory.factory.matcher_box()
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use pagable::PagableDeserialize;
+    use pagable::PagableSerialize;
+    use pagable::testing::TestingDeserializer;
+    use pagable::testing::TestingSerializer;
+
+    use super::*;
+    use crate::const_frozen_string;
+    use crate::values::Heap;
+    use crate::values::Value;
+    use crate::values::list::AllocList;
+    use crate::values::typing::type_compiled::matchers::IsAnyOfTwo;
+    use crate::values::typing::type_compiled::matchers::IsInt;
+    use crate::values::typing::type_compiled::matchers::IsListOf;
+    use crate::values::typing::type_compiled::matchers::IsNone;
+    use crate::values::typing::type_compiled::matchers::IsStr;
+
+    fn round_trip(b: &TypeMatcherBox) -> TypeMatcherBox {
+        let mut ser = TestingSerializer::new();
+        b.pagable_serialize(&mut ser).unwrap();
+        let bytes = ser.finish();
+        let mut de = TestingDeserializer::new(&bytes);
+        TypeMatcherBox::pagable_deserialize(&mut de).unwrap()
+    }
+
+    #[test]
+    fn test_round_trip_non_generic() {
+        // Non-generic matcher (registered via `#[pagable_typetag]` on struct).
+        let b = TypeMatcherBox::new(IsStr);
+        let restored = round_trip(&b);
+        assert!(
+            restored
+                .0
+                .matches_dyn(const_frozen_string!("hi").to_value())
+        );
+        assert!(!restored.0.matches_dyn(Value::new_bool(true)));
+    }
+
+    #[test]
+    fn test_round_trip_generic_1_inner() {
+        // Generic wrapper with 1 inner (registered via
+        // `register_type_matcher!(IsListOf, IsStr)`).
+        let b = TypeMatcherBox::new(IsListOf(IsStr));
+        let restored = round_trip(&b);
+        // `list[str]` matches an empty list (vacuously).
+        Heap::temp(|heap| {
+            let list = heap.alloc(AllocList::EMPTY);
+            assert!(restored.0.matches_dyn(list));
+        });
+    }
+
+    #[test]
+    fn test_round_trip_generic_2_inner() {
+        // 2-generic wrapper with DISTINCT inners (registered via
+        // `register_type_matcher!(IsAnyOfTwo, IsNone, IsStr)`).
+        let b = TypeMatcherBox::new(IsAnyOfTwo(IsNone, IsStr));
+        let restored = round_trip(&b);
+        assert!(restored.0.matches_dyn(Value::new_none()));
+        assert!(restored.0.matches_dyn(const_frozen_string!("x").to_value()));
+        assert!(!restored.0.matches_dyn(Value::new_bool(false)));
+    }
+
+    #[test]
+    fn test_distinct_matchers_distinct_tags() {
+        // Two different matchers round-trip to their own types, no confusion.
+        let a = TypeMatcherBox::new(IsStr);
+        let b = TypeMatcherBox::new(IsInt);
+
+        let mut ser = TestingSerializer::new();
+        a.pagable_serialize(&mut ser).unwrap();
+        b.pagable_serialize(&mut ser).unwrap();
+        let bytes = ser.finish();
+
+        let mut de = TestingDeserializer::new(&bytes);
+        let restored_a = TypeMatcherBox::pagable_deserialize(&mut de).unwrap();
+        let restored_b = TypeMatcherBox::pagable_deserialize(&mut de).unwrap();
+
+        // a matches string, not int; b matches int, not string.
+        Heap::temp(|heap| {
+            let str_val = const_frozen_string!("hi").to_value();
+            let int_val = heap.alloc(42i32);
+            assert!(restored_a.0.matches_dyn(str_val));
+            assert!(!restored_a.0.matches_dyn(int_val));
+            assert!(!restored_b.0.matches_dyn(str_val));
+            assert!(restored_b.0.matches_dyn(int_val));
+        });
+    }
+}
