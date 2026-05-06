@@ -564,6 +564,7 @@ mod tests {
 
     use super::*;
     use crate::typing::ParamSpec;
+    use crate::typing::function::TyFunction;
     use crate::values::dict::value::FrozenDict;
 
     fn round_trip(ty: &Ty) -> Ty {
@@ -602,6 +603,64 @@ mod tests {
     #[test]
     fn test_round_trip_callable() {
         assert_round_trip(Ty::callable(ParamSpec::empty(), Ty::int()));
+    }
+
+    #[test]
+    fn test_round_trip_ty_function() {
+        assert_round_trip(Ty::ty_function(TyFunction::new(
+            ParamSpec::empty(),
+            Ty::string(),
+        )));
+    }
+
+    #[test]
+    fn test_ty_custom_arc_dedup_roundtrip() {
+        // Two `Ty` values that share the same `Arc<dyn TyCustomDyn>` should
+        // serialize the body exactly once (Arc identity dedup via
+        // `pagable::typetag::TaggedArc`). After deserialize, the restored Arcs
+        // should be pointer-equal.
+        let ty1 = Ty::ty_function(TyFunction::new(ParamSpec::empty(), Ty::string()));
+        // Dupe pulls the same Arc<dyn TyCustomDyn> out of ty1.
+        let ty2 = ty1.dupe();
+
+        let mut ser = TestingSerializer::new();
+        ty1.pagable_serialize(&mut ser).unwrap();
+        ty2.pagable_serialize(&mut ser).unwrap();
+        let shared_bytes = ser.finish();
+
+        // Baseline: same Ty built twice independently (different Arcs).
+        let ty_a = Ty::ty_function(TyFunction::new(ParamSpec::empty(), Ty::string()));
+        let ty_b = Ty::ty_function(TyFunction::new(ParamSpec::empty(), Ty::string()));
+        let mut ser = TestingSerializer::new();
+        ty_a.pagable_serialize(&mut ser).unwrap();
+        ty_b.pagable_serialize(&mut ser).unwrap();
+        let distinct_bytes = ser.finish();
+
+        assert!(
+            shared_bytes.len() < distinct_bytes.len(),
+            "dedup should make shared-Arc encoding smaller: shared={} distinct={}",
+            shared_bytes.len(),
+            distinct_bytes.len(),
+        );
+
+        // Round-trip the shared stream and check the Arcs are pointer-equal.
+        let mut de = TestingDeserializer::new(&shared_bytes);
+        let restored1 = Ty::pagable_deserialize(&mut de).unwrap();
+        let restored2 = Ty::pagable_deserialize(&mut de).unwrap();
+        assert_eq!(ty1, restored1);
+        assert_eq!(ty2, restored2);
+        match (
+            &restored1.alternatives.as_slice()[0],
+            &restored2.alternatives.as_slice()[0],
+        ) {
+            (TyBasic::Custom(a), TyBasic::Custom(b)) => {
+                assert!(
+                    std::sync::Arc::ptr_eq(&a.0, &b.0),
+                    "deduped Arcs should round-trip to the same allocation",
+                );
+            }
+            _ => panic!("expected TyBasic::Custom"),
+        }
     }
 
     #[test]

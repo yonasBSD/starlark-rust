@@ -38,6 +38,13 @@ pub fn pagable_tagged_impl(attr: TokenStream, item: TokenStream) -> TokenStream 
             fn pagable_type_tag(&self) -> &'static str {
                 ::std::any::type_name::<Self>()
             }
+            fn pagable_serialize_body(
+                &self,
+                serializer: &mut dyn pagable::PagableSerializer,
+            ) -> pagable::Result<()> {
+                // Forward to the `PagableSerialize` impl which writes just the body.
+                <Self as pagable::PagableSerialize>::pagable_serialize(self, serializer)
+            }
         }
     };
 

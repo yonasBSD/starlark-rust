@@ -52,21 +52,49 @@
 use std::collections::HashMap;
 
 use crate::PagableDeserializer;
-use crate::PagableSerialize;
 use crate::PagableSerializer;
 
 /// Object-safe serialization trait for tagged types.
 ///
 /// This trait is dyn-compatible and used by trait objects to serialize
 /// themselves with a type tag.
-pub trait PagableTagged: PagableSerialize + Send + Sync {
+///
+/// Notably this trait does **not** inherit from `PagableSerialize`. If it did,
+/// Rust would auto-synthesize `impl PagableSerialize for dyn Trait` via the
+/// supertrait relation (vtable-dispatched to the concrete type's body-only
+/// `pagable_serialize`) and the `#[pagable_typetag]` macro couldn't emit its
+/// own `impl PagableSerialize for dyn Trait` that writes `tag + body` (E0371:
+/// "the object type automatically implements the trait"). Keeping the
+/// relation out lets the macro own the `PagableSerialize` impl for the dyn
+/// type so `Arc<dyn Trait>` serialization automatically includes the tag.
+pub trait PagableTagged: Send + Sync {
     /// Get the type tag for this concrete type.
     fn pagable_type_tag(&self) -> &'static str;
 
+    /// Write the body of this value (no tag). Mirrors `PagableSerialize::pagable_serialize`.
+    ///
+    /// Concrete types forward to `PagableSerialize::pagable_serialize(self, ser)`.
+    /// `#[pagable_typetag(Trait)]` / `#[pagable_tagged(Trait)]` derives generate
+    /// this forwarding automatically.
+    ///
+    /// Why this exists (instead of having `serialize_tagged` call
+    /// `<Self as PagableSerialize>::pagable_serialize` directly):
+    ///
+    /// - That call needs `PagableTagged: PagableSerialize`, but we can't have
+    ///   that supertrait (see comment on the trait above).
+    /// - `where Self: PagableSerialize` → `serialize_tagged` references `Self` in its
+    ///   where clause, the whole trait loses `dyn`-compatibility (E0038).
+    ///
+    /// So `pagable_serialize_body` has to be a genuine vtable-dispatched required
+    /// method that each concrete type forwards to its `PagableSerialize::pagable_serialize`.
+    fn pagable_serialize_body(&self, serializer: &mut dyn PagableSerializer) -> crate::Result<()>;
+
+    /// Write `tag + body`. The `#[pagable_typetag]` macro generates an
+    /// `impl PagableSerialize for dyn Trait` that forwards to this method.
     fn serialize_tagged(&self, serializer: &mut dyn PagableSerializer) -> crate::Result<()> {
         let tag = self.pagable_type_tag();
         serde::Serialize::serialize(&tag, serializer.serde())?;
-        self.pagable_serialize(serializer)
+        self.pagable_serialize_body(serializer)
     }
 }
 
@@ -375,6 +403,50 @@ mod tests {
         let restored: Box<dyn Named> = <dyn Named>::deserialize_box(&mut deserializer)?;
 
         assert_eq!(restored.name(), "test");
+        Ok(())
+    }
+
+    // `#[derive(Pagable)]` on a struct holding `Arc<dyn Trait>` or
+    // `Box<dyn Trait>` round-trips.
+    #[derive(Debug, Pagable)]
+    pub struct AnimalHolder {
+        pub animal: Arc<dyn Animal>,
+    }
+
+    #[derive(Debug, Pagable)]
+    pub struct AnimalHolderBox {
+        pub animal: Box<dyn Animal>,
+    }
+
+    #[test]
+    fn test_pagable_derive_arc_dyn_trait_field_roundtrip() -> crate::Result<()> {
+        use crate::PagableDeserialize;
+        use crate::PagableSerialize;
+        use crate::testing::TestingDeserializer;
+        use crate::testing::TestingSerializer;
+
+        // Arc<dyn Animal> round-trip.
+        let arc_value = AnimalHolder {
+            animal: Arc::new(Wrapper(Cat)),
+        };
+        let mut serializer = TestingSerializer::new();
+        arc_value.pagable_serialize(&mut serializer)?;
+        let bytes = serializer.finish();
+        let mut deserializer = TestingDeserializer::new(&bytes);
+        let restored = AnimalHolder::pagable_deserialize(&mut deserializer)?;
+        assert_eq!(restored.animal.species(), "wrapped");
+
+        // Box<dyn Animal> round-trip.
+        let box_value = AnimalHolderBox {
+            animal: Box::new(Wrapper(Cat)),
+        };
+        let mut serializer = TestingSerializer::new();
+        box_value.pagable_serialize(&mut serializer)?;
+        let bytes = serializer.finish();
+        let mut deserializer = TestingDeserializer::new(&bytes);
+        let restored = AnimalHolderBox::pagable_deserialize(&mut deserializer)?;
+        assert_eq!(restored.animal.species(), "wrapped");
+
         Ok(())
     }
 }

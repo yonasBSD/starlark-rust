@@ -19,11 +19,6 @@ use std::fmt::Debug;
 
 use allocative::Allocative;
 use pagable::Pagable;
-use pagable::PagableBoxDeserialize;
-use pagable::PagableDeserialize;
-use pagable::PagableDeserializer;
-use pagable::PagableSerialize;
-use pagable::PagableSerializer;
 use pagable::pagable_typetag;
 use pagable::typetag::PagableTagged;
 use starlark_derive::type_matcher;
@@ -105,34 +100,8 @@ impl<T: TypeMatcher> TypeMatcherDyn for T {
 
 #[pagable_typetag(TypeMatcherDyn)]
 #[doc(hidden)]
-#[derive(Debug, Allocative)]
+#[derive(Debug, Allocative, Pagable)]
 pub struct TypeMatcherBox(pub(crate) Box<dyn TypeMatcherDyn>);
-
-// Do NOT `#[derive(pagable::Pagable)]` here. The derive would generate
-// asymmetric ser/de for the `Box<dyn TypeMatcherDyn>` field:
-//   - Serialize: blanket `PagableSerialize for Box<T>` calls `(**self).pagable_serialize(…)`
-//     on the concrete value — writes payload WITHOUT a type tag.
-//   - Deserialize: blanket `PagableDeserialize for Box<T: PagableBoxDeserialize>` calls
-//     `<dyn TypeMatcherDyn>::deserialize_box(…)` — reads a type tag then dispatches via
-//     the typetag registry.
-// The two halves don't agree on the wire format, so round-trips fail at runtime.
-// Use `serialize_tagged` on the serialize side (writes tag + payload) to keep both
-// ends symmetric.
-impl PagableSerialize for TypeMatcherBox {
-    fn pagable_serialize(&self, serializer: &mut dyn PagableSerializer) -> pagable::Result<()> {
-        self.0.serialize_tagged(serializer)
-    }
-}
-
-impl<'de> PagableDeserialize<'de> for TypeMatcherBox {
-    fn pagable_deserialize<D: PagableDeserializer<'de> + ?Sized>(
-        deserializer: &mut D,
-    ) -> pagable::Result<Self> {
-        Ok(TypeMatcherBox(<dyn TypeMatcherDyn>::deserialize_box(
-            deserializer,
-        )?))
-    }
-}
 
 impl TypeMatcherBox {
     pub(crate) fn new<T: TypeMatcher>(matcher: T) -> TypeMatcherBox {
