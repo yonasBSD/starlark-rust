@@ -546,3 +546,160 @@ impl TyStarlarkValue {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use allocative::Allocative;
+    use pagable::PagableDeserialize;
+    use pagable::PagableSerialize;
+    use pagable::testing::TestingDeserializer;
+    use pagable::testing::TestingSerializer;
+    use starlark_derive::ProvidesStaticType;
+
+    use super::*;
+    use crate as starlark;
+    use crate::values::FrozenStringValue;
+    use crate::values::any::StarlarkAny;
+    use crate::values::any_complex::StarlarkAnyComplex;
+    use crate::values::dict::value::FrozenDict;
+    use crate::values::list::value::FrozenList;
+    use crate::values::none::NoneType;
+    use crate::values::tuple::value::Tuple;
+    use crate::values::types::any_array::AnyArray;
+    use crate::values::types::tuple::value::FrozenTuple;
+
+    #[derive(Allocative, ProvidesStaticType, Debug)]
+    struct TestPayloadA;
+
+    #[derive(Allocative, ProvidesStaticType, Debug)]
+    struct TestPayloadB;
+
+    crate::register_starlark_any_complex!(TestPayloadA);
+    crate::register_starlark_any_complex!(TestPayloadB);
+
+    fn round_trip(value: TyStarlarkValue) -> TyStarlarkValue {
+        let mut ser = TestingSerializer::new();
+        value.pagable_serialize(&mut ser).unwrap();
+        let bytes = ser.finish();
+        let mut de = TestingDeserializer::new(&bytes);
+        TyStarlarkValue::pagable_deserialize(&mut de).unwrap()
+    }
+
+    #[test]
+    fn test_round_trip_simple_type() {
+        // Simple non-generic type.
+        let ty = TyStarlarkValue::new::<NoneType>();
+        let restored = round_trip(ty);
+        assert_eq!(ty, restored);
+        assert_eq!(ty.to_string(), restored.to_string());
+    }
+
+    #[test]
+    fn test_round_trip_frozen_generic() {
+        // V-parameterized frozen variant.
+        let ty = TyStarlarkValue::new::<FrozenDict>();
+        let restored = round_trip(ty);
+        assert_eq!(ty, restored);
+    }
+
+    #[test]
+    fn test_round_trip_live_generic_matches_frozen_canonical() {
+        // `FrozenTuple::Canonical = TupleGen<Value<'v>>` and
+        // `Tuple::Canonical = Tuple` (which is `TupleGen<Value<'v>>`). Both go
+        // through the same `HasTyVTable` impl and should be indistinguishable.
+        let ty_frozen = TyStarlarkValue::new::<FrozenTuple>();
+        let ty_live = TyStarlarkValue::new::<Tuple>();
+        assert_eq!(ty_frozen, ty_live);
+        assert_eq!(round_trip(ty_frozen), ty_frozen);
+        assert_eq!(round_trip(ty_live), ty_live);
+    }
+
+    #[test]
+    fn test_distinct_types_are_distinct() {
+        // Different types must produce distinct TyStarlarkValues and distinct
+        // pagable indices (otherwise round-tripping would mix them up).
+        let a = TyStarlarkValue::new::<NoneType>();
+        let b = TyStarlarkValue::new::<FrozenDict>();
+        let c = TyStarlarkValue::new::<FrozenList>();
+        assert_ne!(a, b);
+        assert_ne!(a, c);
+        assert_ne!(b, c);
+        assert_eq!(round_trip(a), a);
+        assert_eq!(round_trip(b), b);
+        assert_eq!(round_trip(c), c);
+    }
+
+    #[test]
+    fn test_starlark_any_per_t_distinct() {
+        // `StarlarkAny<T>` uses the per-T marker trait; different T's must
+        // each get their own typing vtable entry (never collapse via the
+        // blanket `HasTyVTable for StarlarkAny<T>` impl).
+        use starlark_syntax::codemap::CodeMap;
+
+        use crate::environment::Globals;
+
+        let any_codemap = TyStarlarkValue::new::<StarlarkAny<CodeMap>>();
+        let any_globals = TyStarlarkValue::new::<StarlarkAny<Globals>>();
+        assert_ne!(any_codemap, any_globals);
+        assert_eq!(round_trip(any_codemap), any_codemap);
+        assert_eq!(round_trip(any_globals), any_globals);
+
+        // And neither collides with a non-wrapped registered type.
+        assert_ne!(any_codemap, TyStarlarkValue::new::<NoneType>());
+    }
+
+    #[test]
+    fn test_any_array_per_t_distinct() {
+        // Same contract for `AnyArray<T>`: different T gets different entry.
+        use crate::eval::bc::stack_ptr::BcSlotOut;
+
+        let arr_fv = TyStarlarkValue::new::<AnyArray<FrozenStringValue>>();
+        let arr_bc = TyStarlarkValue::new::<AnyArray<BcSlotOut>>();
+        assert_ne!(arr_fv, arr_bc);
+        assert_eq!(round_trip(arr_fv), arr_fv);
+        assert_eq!(round_trip(arr_bc), arr_bc);
+    }
+
+    #[test]
+    fn test_starlark_any_complex_per_t_distinct() {
+        // Per-T typing vtable registration for `StarlarkAnyComplex<T>`: each
+        // concrete `T` gets its own entry, round-trip preserves identity.
+        let ty_a = TyStarlarkValue::new::<StarlarkAnyComplex<TestPayloadA>>();
+        let ty_b = TyStarlarkValue::new::<StarlarkAnyComplex<TestPayloadB>>();
+        assert_ne!(ty_a, ty_b);
+        assert_eq!(round_trip(ty_a), ty_a);
+        assert_eq!(round_trip(ty_b), ty_b);
+    }
+
+    #[test]
+    fn test_any_vs_any_array_same_t_distinct() {
+        // `StarlarkAny<FrozenStringValue>` and `AnyArray<FrozenStringValue>`
+        // wrap the same T but are different container types — their entries
+        // must not alias.
+        let any_fv = TyStarlarkValue::new::<StarlarkAny<FrozenStringValue>>();
+        let arr_fv = TyStarlarkValue::new::<AnyArray<FrozenStringValue>>();
+        assert_ne!(any_fv, arr_fv);
+        assert_eq!(round_trip(any_fv), any_fv);
+        assert_eq!(round_trip(arr_fv), arr_fv);
+    }
+
+    #[test]
+    fn test_multiple_values_in_one_stream() {
+        // Two distinct types serialized/deserialized in one stream must each
+        // round-trip to their own entry without cross-contamination.
+        let none_ty = TyStarlarkValue::new::<NoneType>();
+        let tuple_ty = TyStarlarkValue::new::<FrozenTuple>();
+
+        let mut ser = TestingSerializer::new();
+        none_ty.pagable_serialize(&mut ser).unwrap();
+        tuple_ty.pagable_serialize(&mut ser).unwrap();
+        let bytes = ser.finish();
+
+        let mut de = TestingDeserializer::new(&bytes);
+        let restored_none = TyStarlarkValue::pagable_deserialize(&mut de).unwrap();
+        let restored_tuple = TyStarlarkValue::pagable_deserialize(&mut de).unwrap();
+        assert_eq!(restored_none, none_ty);
+        assert_eq!(restored_tuple, tuple_ty);
+        assert_ne!(restored_none, restored_tuple);
+    }
+}
