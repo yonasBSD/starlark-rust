@@ -21,6 +21,7 @@ use std::sync::OnceLock;
 
 use allocative::Allocative;
 use dupe::Dupe;
+use pagable::Pagable;
 use starlark_syntax::codemap::Span;
 
 use crate::typing::ParamSpec;
@@ -30,14 +31,16 @@ use crate::typing::call_args::TyCallArgs;
 use crate::typing::error::TypingOrInternalError;
 use crate::typing::ty::TypeRenderConfig;
 
-#[derive(Debug, Eq, PartialEq, Ord, PartialOrd, Hash, Allocative)]
+#[derive(Debug, Eq, PartialEq, Ord, PartialOrd, Hash, Allocative, Pagable)]
 struct TyCallableInner {
     params: ParamSpec,
     result: Ty,
 }
 
 /// `typing.Callable`.
-#[derive(Debug, Dupe, Clone, Eq, PartialEq, Ord, PartialOrd, Hash, Allocative)]
+#[derive(
+    Debug, Dupe, Clone, Eq, PartialEq, Ord, PartialOrd, Hash, Allocative, Pagable
+)]
 pub struct TyCallable {
     inner: Arc<TyCallableInner>,
 }
