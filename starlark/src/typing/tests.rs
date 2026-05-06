@@ -89,11 +89,22 @@ impl<'v> AllocValue<'v> for MyCustomType {
 
 struct NamedXy;
 
+pagable::static_str!(NAMED_XY_X = "x");
+pagable::static_str!(NAMED_XY_Y = "y");
+
 impl StarlarkCallableParamSpec for NamedXy {
     fn params() -> ParamSpec {
         ParamSpec::new_named_only([
-            (ArcStr::new_static("x"), ParamIsRequired::Yes, Ty::string()),
-            (ArcStr::new_static("y"), ParamIsRequired::Yes, Ty::int()),
+            (
+                ArcStr::new_static(NAMED_XY_X),
+                ParamIsRequired::Yes,
+                Ty::string(),
+            ),
+            (
+                ArcStr::new_static(NAMED_XY_Y),
+                ParamIsRequired::Yes,
+                Ty::int(),
+            ),
         ])
         .unwrap()
     }

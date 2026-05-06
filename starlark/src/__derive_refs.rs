@@ -27,6 +27,8 @@ pub mod serde {
     pub use serde::ser::Error;
 }
 pub use inventory;
+// Re-export for starlark_module-generated `pagable::static_str!` registrations.
+pub use pagable::static_str;
 pub mod components;
 pub mod invoke_macro_error;
 pub mod param_spec;
