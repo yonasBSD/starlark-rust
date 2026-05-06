@@ -15,7 +15,6 @@
  * limitations under the License.
  */
 
-use std::fmt::Debug;
 use std::marker::PhantomData;
 
 use crate::cast;
@@ -38,6 +37,7 @@ use crate::values::layout::heap::repr::AValueHeader;
 use crate::values::layout::heap::repr::AValueRepr;
 use crate::values::layout::heap::repr::ForwardPtr;
 use crate::values::types::any_array::AnyArray;
+use crate::values::types::any_array::AnyArrayRegistered;
 use crate::values::types::any_array::FrozenAnyArray;
 use crate::values::types::array::Array;
 
@@ -47,7 +47,7 @@ fn array_avalue<'v>(
     AValueImpl::<AValueArray>::new(unsafe { Array::new(0, cap) })
 }
 
-fn any_array_avalue<T: Debug + 'static>(
+fn any_array_avalue<T: AnyArrayRegistered>(
     cap: usize,
 ) -> AValueImpl<'static, impl AValue<'static, StarlarkValue = AnyArray<T>, ExtraElem = T>> {
     AValueImpl::<AValueAnyArray<T>>::new(unsafe { AnyArray::new(cap) })
@@ -114,7 +114,7 @@ impl<'v> AValue<'v> for AValueArray {
 
 pub(crate) struct AValueAnyArray<T>(PhantomData<T>);
 
-impl<'v, T: Debug + 'static> AValue<'v> for AValueAnyArray<T> {
+impl<'v, T: AnyArrayRegistered> AValue<'v> for AValueAnyArray<T> {
     type StarlarkValue = AnyArray<T>;
     type ExtraElem = T;
 
@@ -143,7 +143,7 @@ impl<'v, T: Debug + 'static> AValue<'v> for AValueAnyArray<T> {
 
 impl FrozenHeap {
     /// Allocate a slice in the frozen heap, returning a [`FrozenAnyArray`].
-    pub(crate) fn alloc_any_array_value<T: Debug + Send + Sync + Clone>(
+    pub(crate) fn alloc_any_array_value<T: AnyArrayRegistered + Send + Sync + Clone>(
         &self,
         values: &[T],
     ) -> FrozenAnyArray<T> {

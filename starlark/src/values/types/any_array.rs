@@ -99,9 +99,16 @@ impl<T: Debug + 'static> Drop for AnyArray<T> {
 // This struct has zero length array of `T`, so check it actually declares it has drop.
 const _: () = assert!(mem::needs_drop::<AnyArray<String>>());
 
-#[starlark_value(type = "AnyArray")]
-impl<'v, T: Debug + 'static> StarlarkValue<'v> for AnyArray<T> {
-    type Canonical = Self;
+/// Marker trait certifying that `T` has a registered typing vtable entry
+/// for `AnyArray<T>`. Implemented per-`T` by
+/// [`register_any_array!`][crate::register_any_array].
+///
+/// Same orphan-rule workaround as `StarlarkAnyRegistered`.
+pub(crate) trait AnyArrayRegistered: Debug + 'static {
+    /// Typing vtable entry for `AnyArray<Self>`.
+    const TY_VTABLE_STATIC: pagable::StaticValue<
+        crate::typing::starlark_value::TyStarlarkValueVTable,
+    >;
 }
 
 /// Type alias for `FrozenValueTyped<'static, AnyArray<T>>`.
@@ -111,13 +118,42 @@ impl<'v, T: Debug + 'static> StarlarkValue<'v> for AnyArray<T> {
 /// through `AnyArray<T>` to reach `[T]`.
 pub type FrozenAnyArray<T> = FrozenValueTyped<'static, AnyArray<T>>;
 
-// Generic over arbitrary T; proc macro skips type params.
 #[cfg(feature = "pagable")]
-impl<T: Debug + 'static> crate::typing::starlark_value::HasTyVTable for AnyArray<T> {
+impl<T> crate::typing::HasTyVTable for AnyArray<T>
+where
+    T: AnyArrayRegistered,
+{
     const TY_VTABLE_STATIC: pagable::StaticValue<
         crate::typing::starlark_value::TyStarlarkValueVTable,
-    > = crate::typing::starlark_value::UNREGISTERED_VTABLE_STATIC;
+    > = <T as AnyArrayRegistered>::TY_VTABLE_STATIC;
 }
+
+#[starlark_value(type = "AnyArray")]
+impl<'v, T: AnyArrayRegistered> StarlarkValue<'v> for AnyArray<T> {
+    type Canonical = Self;
+}
+
+/// Register a typing vtable entry for `AnyArray<T>`.
+#[macro_export]
+macro_rules! register_any_array {
+    ($t:ty) => {
+        const _: () = {
+            $crate::__declare_ty_vtable_static!($crate::values::types::any_array::AnyArray<$t>);
+            impl $crate::values::types::any_array::AnyArrayRegistered for $t {
+                const TY_VTABLE_STATIC: pagable::StaticValue<
+                    $crate::__derive_refs::TyStarlarkValueVTable,
+                > = VTABLE_STATIC;
+            }
+        };
+    };
+}
+
+// Registrations for types used with `FrozenHeap::alloc_any_slice` inside
+// starlark. External users register their own `T` via `register_any_array!`.
+crate::register_any_array!(crate::values::FrozenStringValue);
+crate::register_any_array!(crate::eval::compiler::def::CopySlotFromParent);
+crate::register_any_array!(crate::eval::runtime::slots::LocalSlotId);
+crate::register_any_array!(crate::eval::bc::stack_ptr::BcSlotOut);
 
 #[cfg(test)]
 mod tests {
@@ -141,6 +177,8 @@ mod tests {
     }
 
     register_starlark_any!(IncrementOnDrop);
+    register_any_array!(IncrementOnDrop);
+    register_any_array!(i32);
 
     #[test]
     fn test_drop() {
