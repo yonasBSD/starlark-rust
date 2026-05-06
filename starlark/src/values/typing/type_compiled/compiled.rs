@@ -25,6 +25,7 @@ use std::hash::Hasher;
 use allocative::Allocative;
 use dupe::Dupe;
 use pagable::Pagable;
+use pagable::pagable_typetag;
 use starlark_derive::starlark_module;
 use starlark_derive::starlark_value;
 use starlark_derive::type_matcher;
@@ -65,6 +66,7 @@ use crate::values::type_repr::StarlarkTypeRepr;
 use crate::values::types::tuple::value::Tuple;
 use crate::values::typing::type_compiled::factory::TypeCompiledFactory;
 use crate::values::typing::type_compiled::matcher::TypeMatcher;
+use crate::values::typing::type_compiled::matcher::TypeMatcherDyn;
 
 // Static type-compiled value for `typing.Any`.
 static_type_compiled!(TYPE_COMPILED_ANY: IsAny, Ty::any());
@@ -166,6 +168,7 @@ where
 
 #[doc(hidden)]
 #[derive(Hash, Eq, PartialEq, Debug, Clone, Allocative, Pagable)]
+#[pagable_typetag(TypeMatcherDyn)]
 pub struct DummyTypeMatcher;
 
 #[type_matcher]

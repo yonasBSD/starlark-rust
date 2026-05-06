@@ -98,19 +98,22 @@ macro_rules! register_special_avalue_frozen {
 
 pub(crate) use register_special_avalue_frozen;
 
-/// Macro to register a vtable for a generic `TypeMatcher` implementation.
+/// Register a `TypeMatcher` for vtable lookup. Always emits the AValue
+/// vtable for `TypeCompiledImplAsStarlarkValue<T>`; for generic wrappers,
+/// additionally delegates to [`pagable::register_typetag!`] for the
+/// per-instantiation typetag registration.
 ///
-/// This macro is for generic `TypeMatcher` types (like `IsListOf<TypeMatcherBox>`,
-/// `IsDictOf<TypeMatcherBox, TypeMatcherBox>`) that cannot use the `#[type_matcher]`
-/// attribute macro (which only supports non-generic types).
-///
-/// # Example
-///
-/// ```ignore
-/// register_type_matcher!(IsTupleOf<TypeMatcherBox>);
-/// ```
+/// Forms:
+/// - `register_type_matcher!(Matcher)` — non-generic (e.g. `IsStr`).
+/// - `register_type_matcher!(Wrapper<A, B, ...>)` — generic, any arity.
 #[macro_export]
 macro_rules! register_type_matcher {
+    ($wrapper:ident < $($arg:ty),+ $(,)? >) => {
+        $crate::register_simple_vtable_entry!(
+            $crate::values::typing::TypeCompiledImplAsStarlarkValue<$wrapper<$($arg),+>>
+        );
+        pagable::register_typetag!($wrapper<$($arg),+> as dyn $crate::__derive_refs::TypeMatcherDyn);
+    };
     ($matcher:ty) => {
         // Note: We use register_simple_vtable_entry! instead of register_avalue_simple_frozen!
         // because TypeCompiledImplAsStarlarkValue<T> has a blanket impl of VtableRegistered

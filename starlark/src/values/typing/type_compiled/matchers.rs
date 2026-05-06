@@ -18,6 +18,9 @@
 use allocative::Allocative;
 use dupe::Dupe;
 use pagable::Pagable;
+use pagable::pagable_tagged;
+use pagable::pagable_typetag;
+use pagable::typetag::PagableRegisteredFor;
 use starlark_derive::type_matcher;
 
 use crate as starlark;
@@ -36,9 +39,11 @@ use crate::values::tuple::value::Tuple;
 use crate::values::types::int::int_or_big::StarlarkIntRef;
 use crate::values::typing::type_compiled::matcher::TypeMatcher;
 use crate::values::typing::type_compiled::matcher::TypeMatcherBox;
+use crate::values::typing::type_compiled::matcher::TypeMatcherDyn;
 use crate::values::typing::type_compiled::matcher::TypeMatcherRegistered;
 
 #[derive(Clone, Copy, Dupe, Allocative, Debug, Pagable)]
+#[pagable_typetag(TypeMatcherDyn)]
 pub(crate) struct IsAny;
 
 #[type_matcher]
@@ -53,6 +58,7 @@ impl TypeMatcher for IsAny {
 }
 
 #[derive(Clone, Copy, Dupe, Allocative, Debug, Pagable)]
+#[pagable_typetag(TypeMatcherDyn)]
 pub(crate) struct IsNever;
 
 #[type_matcher]
@@ -63,6 +69,7 @@ impl TypeMatcher for IsNever {
 }
 
 #[derive(Clone, Copy, Dupe, Allocative, Debug, Pagable)]
+#[pagable_typetag(TypeMatcherDyn)]
 pub(crate) struct IsStr;
 
 #[type_matcher]
@@ -73,6 +80,7 @@ impl TypeMatcher for IsStr {
 }
 
 #[derive(Clone, Copy, Dupe, Allocative, Debug, Pagable)]
+#[pagable_typetag(TypeMatcherDyn)]
 pub(crate) struct IsList;
 
 #[type_matcher]
@@ -82,6 +90,7 @@ impl TypeMatcher for IsList {
     }
 }
 
+#[pagable_tagged(TypeMatcherDyn)]
 #[derive(Clone, Allocative, Debug, Pagable)]
 pub(crate) struct IsListOf<I: TypeMatcher>(pub(crate) I);
 
@@ -90,7 +99,10 @@ register_type_matcher!(IsListOf<IsStr>);
 register_type_matcher!(IsListOf<StarlarkTypeIdMatcher>);
 register_type_matcher!(IsListOf<TypeMatcherBox>);
 
-impl<I: TypeMatcher> TypeMatcher for IsListOf<I> {
+impl<I: TypeMatcher> TypeMatcher for IsListOf<I>
+where
+    Self: PagableRegisteredFor<dyn TypeMatcherDyn>,
+{
     fn matches(&self, value: Value) -> bool {
         match ListRef::from_value(value) {
             None => false,
@@ -99,6 +111,7 @@ impl<I: TypeMatcher> TypeMatcher for IsListOf<I> {
     }
 }
 
+#[pagable_tagged(TypeMatcherDyn)]
 #[derive(Clone, Allocative, Debug, Pagable)]
 pub(crate) struct IsTupleOf<A: TypeMatcher>(pub(crate) A);
 
@@ -106,7 +119,10 @@ unsafe impl<A: TypeMatcher> TypeMatcherRegistered for IsTupleOf<A> {}
 register_type_matcher!(IsTupleOf<StarlarkTypeIdMatcher>);
 register_type_matcher!(IsTupleOf<TypeMatcherBox>);
 
-impl<A: TypeMatcher> TypeMatcher for IsTupleOf<A> {
+impl<A: TypeMatcher> TypeMatcher for IsTupleOf<A>
+where
+    Self: PagableRegisteredFor<dyn TypeMatcherDyn>,
+{
     fn matches(&self, value: Value) -> bool {
         match Tuple::from_value(value) {
             None => false,
@@ -116,6 +132,7 @@ impl<A: TypeMatcher> TypeMatcher for IsTupleOf<A> {
 }
 
 #[derive(Clone, Allocative, Debug, Pagable)]
+#[pagable_typetag(TypeMatcherDyn)]
 pub(crate) struct IsTupleElems(pub(crate) Vec<TypeMatcherBox>);
 
 #[type_matcher]
@@ -131,6 +148,7 @@ impl TypeMatcher for IsTupleElems {
 }
 
 #[derive(Clone, Allocative, Debug, Pagable)]
+#[pagable_typetag(TypeMatcherDyn)]
 pub(crate) struct IsTupleElems0;
 
 #[type_matcher]
@@ -143,13 +161,17 @@ impl TypeMatcher for IsTupleElems0 {
     }
 }
 
+#[pagable_tagged(TypeMatcherDyn)]
 #[derive(Clone, Allocative, Debug, Pagable)]
 pub(crate) struct IsTupleElems1<A: TypeMatcher>(pub(crate) A);
 
 unsafe impl<A: TypeMatcher> TypeMatcherRegistered for IsTupleElems1<A> {}
 register_type_matcher!(IsTupleElems1<TypeMatcherBox>);
 
-impl<A: TypeMatcher> TypeMatcher for IsTupleElems1<A> {
+impl<A: TypeMatcher> TypeMatcher for IsTupleElems1<A>
+where
+    Self: PagableRegisteredFor<dyn TypeMatcherDyn>,
+{
     fn matches(&self, value: Value) -> bool {
         match Tuple::from_value(value).map(|t| t.content()) {
             Some([v0]) => self.0.matches(*v0),
@@ -158,6 +180,7 @@ impl<A: TypeMatcher> TypeMatcher for IsTupleElems1<A> {
     }
 }
 
+#[pagable_tagged(TypeMatcherDyn)]
 #[derive(Clone, Allocative, Debug, Pagable)]
 pub(crate) struct IsTupleElems2<A: TypeMatcher, B: TypeMatcher>(pub(crate) A, pub(crate) B);
 
@@ -165,7 +188,10 @@ unsafe impl<A: TypeMatcher, B: TypeMatcher> TypeMatcherRegistered for IsTupleEle
 register_type_matcher!(IsTupleElems2<StarlarkTypeIdMatcher, StarlarkTypeIdMatcher>);
 register_type_matcher!(IsTupleElems2<TypeMatcherBox, TypeMatcherBox>);
 
-impl<A: TypeMatcher, B: TypeMatcher> TypeMatcher for IsTupleElems2<A, B> {
+impl<A: TypeMatcher, B: TypeMatcher> TypeMatcher for IsTupleElems2<A, B>
+where
+    Self: PagableRegisteredFor<dyn TypeMatcherDyn>,
+{
     fn matches(&self, value: Value) -> bool {
         match Tuple::from_value(value).map(|t| t.content()) {
             Some([v0, v1]) => self.0.matches(*v0) && self.1.matches(*v1),
@@ -175,6 +201,7 @@ impl<A: TypeMatcher, B: TypeMatcher> TypeMatcher for IsTupleElems2<A, B> {
 }
 
 #[derive(Clone, Copy, Dupe, Allocative, Debug, Pagable)]
+#[pagable_typetag(TypeMatcherDyn)]
 pub(crate) struct IsDict;
 
 #[type_matcher]
@@ -184,6 +211,7 @@ impl TypeMatcher for IsDict {
     }
 }
 
+#[pagable_tagged(TypeMatcherDyn)]
 #[derive(Clone, Allocative, Debug, Pagable)]
 pub(crate) struct IsDictOf<K: TypeMatcher, V: TypeMatcher>(pub(crate) K, pub(crate) V);
 
@@ -196,7 +224,10 @@ register_type_matcher!(IsDictOf<TypeMatcherBox, IsAny>);
 register_type_matcher!(IsDictOf<IsStr, IsAny>);
 register_type_matcher!(IsDictOf<StarlarkTypeIdMatcher, IsAny>);
 
-impl<K: TypeMatcher, V: TypeMatcher> TypeMatcher for IsDictOf<K, V> {
+impl<K: TypeMatcher, V: TypeMatcher> TypeMatcher for IsDictOf<K, V>
+where
+    Self: PagableRegisteredFor<dyn TypeMatcherDyn>,
+{
     fn matches(&self, value: Value) -> bool {
         match DictRef::from_value(value) {
             None => false,
@@ -208,6 +239,7 @@ impl<K: TypeMatcher, V: TypeMatcher> TypeMatcher for IsDictOf<K, V> {
 }
 
 #[derive(Clone, Copy, Dupe, Allocative, Debug, Pagable)]
+#[pagable_typetag(TypeMatcherDyn)]
 pub(crate) struct IsSet;
 
 #[type_matcher]
@@ -217,6 +249,7 @@ impl TypeMatcher for IsSet {
     }
 }
 
+#[pagable_tagged(TypeMatcherDyn)]
 #[derive(Clone, Allocative, Debug, Pagable)]
 pub(crate) struct IsSetOf<I: TypeMatcher>(pub(crate) I);
 
@@ -225,7 +258,10 @@ register_type_matcher!(IsSetOf<IsStr>);
 register_type_matcher!(IsSetOf<StarlarkTypeIdMatcher>);
 register_type_matcher!(IsSetOf<TypeMatcherBox>);
 
-impl<I: TypeMatcher> TypeMatcher for IsSetOf<I> {
+impl<I: TypeMatcher> TypeMatcher for IsSetOf<I>
+where
+    Self: PagableRegisteredFor<dyn TypeMatcherDyn>,
+{
     fn matches(&self, value: Value) -> bool {
         match SetRef::unpack_value_opt(value) {
             Some(set) => set.aref.iter().all(|v| self.0.matches(v)),
@@ -234,6 +270,7 @@ impl<I: TypeMatcher> TypeMatcher for IsSetOf<I> {
     }
 }
 
+#[pagable_tagged(TypeMatcherDyn)]
 #[derive(Clone, Allocative, Debug, Pagable)]
 pub(crate) struct IsAnyOfTwo<A: TypeMatcher, B: TypeMatcher>(pub(crate) A, pub(crate) B);
 
@@ -245,13 +282,17 @@ register_type_matcher!(IsAnyOfTwo<IsNone, IsList>);
 register_type_matcher!(IsAnyOfTwo<IsNone, TypeMatcherBox>);
 register_type_matcher!(IsAnyOfTwo<TypeMatcherBox, TypeMatcherBox>);
 
-impl<A: TypeMatcher, B: TypeMatcher> TypeMatcher for IsAnyOfTwo<A, B> {
+impl<A: TypeMatcher, B: TypeMatcher> TypeMatcher for IsAnyOfTwo<A, B>
+where
+    Self: PagableRegisteredFor<dyn TypeMatcherDyn>,
+{
     fn matches(&self, value: Value) -> bool {
         self.0.matches(value) || self.1.matches(value)
     }
 }
 
 #[derive(Clone, Allocative, Debug, Pagable)]
+#[pagable_typetag(TypeMatcherDyn)]
 pub(crate) struct IsAnyOf(pub(crate) Vec<TypeMatcherBox>);
 
 #[type_matcher]
@@ -262,6 +303,7 @@ impl TypeMatcher for IsAnyOf {
 }
 
 #[derive(Allocative, Clone, Copy, Dupe, Debug, Pagable)]
+#[pagable_typetag(TypeMatcherDyn)]
 pub(crate) struct IsCallable;
 
 #[type_matcher]
@@ -272,6 +314,7 @@ impl TypeMatcher for IsCallable {
 }
 
 #[derive(Allocative, Clone, Copy, Dupe, Debug, Pagable)]
+#[pagable_typetag(TypeMatcherDyn)]
 pub(crate) struct IsType;
 
 #[type_matcher]
@@ -282,6 +325,7 @@ impl TypeMatcher for IsType {
 }
 
 #[derive(Copy, Clone, Dupe, Debug, Allocative, Pagable)]
+#[pagable_typetag(TypeMatcherDyn)]
 pub(crate) struct IsIterable;
 
 #[type_matcher]
@@ -292,6 +336,7 @@ impl TypeMatcher for IsIterable {
 }
 
 #[derive(Clone, Copy, Dupe, Allocative, Debug, Pagable)]
+#[pagable_typetag(TypeMatcherDyn)]
 pub(crate) struct IsInt;
 
 #[type_matcher]
@@ -302,6 +347,7 @@ impl TypeMatcher for IsInt {
 }
 
 #[derive(Clone, Copy, Dupe, Allocative, Debug, Pagable)]
+#[pagable_typetag(TypeMatcherDyn)]
 pub(crate) struct IsBool;
 
 #[type_matcher]
@@ -312,6 +358,7 @@ impl TypeMatcher for IsBool {
 }
 
 #[derive(Clone, Copy, Dupe, Allocative, Debug, Pagable)]
+#[pagable_typetag(TypeMatcherDyn)]
 pub(crate) struct IsNone;
 
 #[type_matcher]
@@ -326,6 +373,7 @@ impl TypeMatcher for IsNone {
 // store a `TyStarlarkValue` which is pagable and extract the id from it at
 // match time.
 #[derive(Allocative, Debug, Clone, Pagable)]
+#[pagable_typetag(TypeMatcherDyn)]
 pub(crate) struct StarlarkTypeIdMatcher {
     ty: TyStarlarkValue,
 }

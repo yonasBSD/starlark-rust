@@ -56,3 +56,5 @@ pub use crate::values::layout::avalues::simple::AValueSimple;
 pub use crate::values::layout::vtable::AValueVTable;
 // Re-export for declare_starlark_value_as_type! and #[starlark_types] proc macro output.
 pub use crate::values::types::starlark_value_as_type::StarlarkValueAsType;
+// Re-export for TypeMatcher pagable typetag registration macro.
+pub use crate::values::typing::type_compiled::matcher::TypeMatcherDyn;
