@@ -66,7 +66,9 @@ pub(crate) enum ParamMode {
 }
 
 /// A parameter argument to a function
-#[derive(Debug, Clone, Dupe, PartialEq, Eq, Hash, PartialOrd, Ord, Allocative)]
+#[derive(
+    Debug, Clone, Dupe, PartialEq, Eq, Hash, PartialOrd, Ord, Allocative, Pagable
+)]
 pub(crate) struct Param {
     /// The type of parameter
     pub(crate) mode: ParamMode,
@@ -135,7 +137,9 @@ struct ParamSpecSplit<'a> {
 }
 
 /// Callable parameter specification (e.g. positional only followed by `**kwargs`).
-#[derive(Debug, Eq, PartialEq, Clone, Dupe, Hash, PartialOrd, Ord, Allocative)]
+#[derive(
+    Debug, Eq, PartialEq, Clone, Dupe, Hash, PartialOrd, Ord, Allocative, Pagable
+)]
 pub struct ParamSpec {
     params: SmallArcVec1<Param>,
     indices: DefParamIndices,
