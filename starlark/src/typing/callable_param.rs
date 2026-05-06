@@ -22,6 +22,7 @@ use std::iter;
 
 use allocative::Allocative;
 use dupe::Dupe;
+use pagable::Pagable;
 use starlark_map::small_set::SmallSet;
 use starlark_syntax::other_error;
 use starlark_syntax::syntax::def::DefParamIndices;
@@ -37,7 +38,7 @@ use crate::util::arc_str::ArcStr;
 
 /// Indication whether parameter is required.
 #[derive(
-    Debug, Clone, Dupe, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, Allocative
+    Debug, Clone, Dupe, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, Allocative, Pagable
 )]
 pub enum ParamIsRequired {
     /// Parameter is required.
