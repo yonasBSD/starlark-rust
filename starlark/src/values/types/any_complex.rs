@@ -23,12 +23,14 @@ use std::fmt::Debug;
 use std::fmt::Display;
 
 use allocative::Allocative;
+use pagable::StaticValue;
 use starlark_derive::NoSerialize;
 use starlark_derive::starlark_value;
 
 use crate as starlark;
 use crate::any::ProvidesStaticType;
 use crate::pagable::vtable_register::VtableRegistered;
+use crate::typing::starlark_value::TyStarlarkValueVTable;
 use crate::values::AllocValue;
 use crate::values::Freeze;
 use crate::values::Heap;
@@ -84,20 +86,77 @@ impl<T> Display for StarlarkAnyComplex<T> {
     }
 }
 
+/// Marker trait certifying that `T` has a registered typing vtable entry
+/// for `StarlarkAnyComplex<T>`. Implemented per-`T` by
+/// [`register_starlark_any_complex!`][crate::register_starlark_any_complex].
+///
+/// This indirection exists to work around the orphan rule: downstream
+/// crates can't `impl HasTyVTable for StarlarkAnyComplex<LocalT>` directly
+/// (both trait and outer type are foreign), but they can impl this marker on
+/// their local `T`. A blanket impl in this crate then provides `HasTyVTable`
+/// for the corresponding `StarlarkAnyComplex<T>`.
+pub trait StarlarkAnyComplexHasTyVTable {
+    /// Typing vtable entry for `StarlarkAnyComplex<Self>`.
+    const TY_VTABLE_STATIC: StaticValue<TyStarlarkValueVTable>;
+}
+
+#[cfg(feature = "pagable")]
+impl<T> crate::typing::HasTyVTable for StarlarkAnyComplex<T>
+where
+    T: StarlarkAnyComplexHasTyVTable,
+{
+    const TY_VTABLE_STATIC: StaticValue<TyStarlarkValueVTable> =
+        <T as StarlarkAnyComplexHasTyVTable>::TY_VTABLE_STATIC;
+}
+
 #[starlark_value(type = "any_complex")]
 impl<'v, T> StarlarkValue<'v> for StarlarkAnyComplex<T>
 where
-    T: Allocative + ProvidesStaticType<'v> + 'v,
+    T: Allocative + ProvidesStaticType<'v> + 'v + StarlarkAnyComplexHasTyVTable,
     T::StaticType: Sized,
 {
     type Canonical = Self;
 }
 
-#[cfg(feature = "pagable")]
-impl<T> crate::typing::starlark_value::HasTyVTable for StarlarkAnyComplex<T> {
-    const TY_VTABLE_STATIC: pagable::StaticValue<
-        crate::typing::starlark_value::TyStarlarkValueVTable,
-    > = crate::typing::starlark_value::UNREGISTERED_VTABLE_STATIC;
+/// Register vtables for `StarlarkAnyComplex<T>`.
+///
+/// Three forms:
+/// - `register_starlark_any_complex!(T)` — registers the typing vtable for
+///   `StarlarkAnyComplex<T>`. Use for a `T` that is never stored on the
+///   frozen heap (e.g. unfrozen `Foo<'_>` alone, or a standalone type).
+/// - `register_starlark_any_complex!(frozen T)` — registers the typing vtable **and**
+///   the frozen-heap vtable. Use for the `'static` frozen companion that
+///   lives on the frozen heap.
+/// - `register_starlark_any_complex!(T, frozen FrozenT)` — paired form: does both of
+///   the above in one call. Preferred for a typical freeze pair.
+///
+/// ```ignore
+/// register_starlark_any_complex!(Foo<'_>, frozen FrozenFoo);
+/// ```
+#[macro_export]
+macro_rules! register_starlark_any_complex {
+    ($unfrozen:ty, frozen $frozen:ty) => {
+        $crate::register_starlark_any_complex!($unfrozen);
+        $crate::register_starlark_any_complex!(frozen $frozen);
+    };
+    (frozen $t:ty) => {
+        $crate::register_starlark_any_complex!($t);
+        // SAFETY: register_simple_vtable_entry! below registers the vtable.
+        unsafe impl $crate::values::any_complex::FrozenAnyComplexVtableRegistered for $t {}
+        $crate::register_simple_vtable_entry!($crate::values::any_complex::StarlarkAnyComplex<$t>);
+    };
+    ($t:ty) => {
+        const _: () = {
+            $crate::__declare_ty_vtable_static!(
+                $crate::values::any_complex::StarlarkAnyComplex<$t>
+            );
+            impl $crate::values::any_complex::StarlarkAnyComplexHasTyVTable for $t {
+                const TY_VTABLE_STATIC: pagable::StaticValue<
+                    $crate::__derive_refs::TyStarlarkValueVTable,
+                > = VTABLE_STATIC;
+            }
+        };
+    };
 }
 
 impl<'v, T> AllocValue<'v> for StarlarkAnyComplex<T>
@@ -119,12 +178,12 @@ where
 ///
 /// Implementors must also register the vtable entry for `StarlarkAnyComplex<Self>`
 /// using [`register_simple_vtable_entry!`](macro@crate::register_simple_vtable_entry). Use the
-/// [`register_any_complex_frozen!`](macro@crate::register_any_complex_frozen)
-/// macro instead of implementing this trait manually, as it handles both the trait
-/// implementation and vtable registration.
-pub unsafe trait FrozenAnyComplexRegistered {}
+/// [`register_starlark_any_complex!`](macro@crate::register_any_complex_frozen)
+/// macro with the `frozen` form instead of implementing this trait manually —
+/// it handles both the trait implementation and vtable registration.
+pub unsafe trait FrozenAnyComplexVtableRegistered {}
 
-unsafe impl<T> VtableRegistered for StarlarkAnyComplex<T> where T: FrozenAnyComplexRegistered {}
+unsafe impl<T> VtableRegistered for StarlarkAnyComplex<T> where T: FrozenAnyComplexVtableRegistered {}
 
 #[cfg(test)]
 mod tests {
@@ -135,7 +194,6 @@ mod tests {
     use crate as starlark;
     use crate::const_frozen_string;
     use crate::environment::Module;
-    use crate::register_any_complex_frozen;
     use crate::values::Freeze;
     use crate::values::FreezeResult;
     use crate::values::Freezer;
@@ -172,7 +230,7 @@ mod tests {
         other: FrozenValue,
     }
 
-    register_any_complex_frozen!(FrozenData);
+    crate::register_starlark_any_complex!(UnfrozenData<'_>, frozen FrozenData);
 
     #[test]
     fn test_any_complex() {
