@@ -84,7 +84,7 @@ impl Display for Approximation {
 #[derive(
     Debug, Clone, Dupe, PartialEq, Eq, Hash, PartialOrd, Ord, Allocative, Trace
 )]
-#[derive(pagable::PagablePanic)]
+#[derive(pagable::Pagable)]
 pub struct Ty {
     /// A series of alternative types.
     ///
@@ -552,5 +552,93 @@ impl Display for TyDisplay<'_> {
 impl Display for Ty {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         self.fmt_with_config(f, &TypeRenderConfig::Default)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use pagable::PagableDeserialize;
+    use pagable::PagableSerialize;
+    use pagable::testing::TestingDeserializer;
+    use pagable::testing::TestingSerializer;
+
+    use super::*;
+    use crate::typing::ParamSpec;
+    use crate::values::dict::value::FrozenDict;
+
+    fn round_trip(ty: &Ty) -> Ty {
+        let mut ser = TestingSerializer::new();
+        ty.pagable_serialize(&mut ser).unwrap();
+        let bytes = ser.finish();
+        let mut de = TestingDeserializer::new(&bytes);
+        Ty::pagable_deserialize(&mut de).unwrap()
+    }
+
+    #[track_caller]
+    fn assert_round_trip(ty: Ty) {
+        assert_eq!(ty, round_trip(&ty));
+    }
+
+    #[test]
+    fn test_round_trip_primitives() {
+        assert_round_trip(Ty::any());
+        assert_round_trip(Ty::never());
+        assert_round_trip(Ty::none());
+        assert_round_trip(Ty::bool());
+        assert_round_trip(Ty::int());
+        assert_round_trip(Ty::float());
+        assert_round_trip(Ty::string());
+    }
+
+    #[test]
+    fn test_round_trip_containers() {
+        assert_round_trip(Ty::list(Ty::string()));
+        assert_round_trip(Ty::dict(Ty::string(), Ty::int()));
+        assert_round_trip(Ty::set(Ty::int()));
+        assert_round_trip(Ty::tuple(vec![Ty::int(), Ty::string()]));
+        assert_round_trip(Ty::iter(Ty::int()));
+    }
+
+    #[test]
+    fn test_round_trip_callable() {
+        assert_round_trip(Ty::callable(ParamSpec::empty(), Ty::int()));
+    }
+
+    #[test]
+    fn test_round_trip_union() {
+        let u = Ty::unions(vec![Ty::int(), Ty::string(), Ty::none()]);
+        assert_round_trip(u);
+    }
+
+    #[test]
+    fn test_round_trip_starlark_value() {
+        assert_round_trip(Ty::starlark_value::<FrozenDict>());
+    }
+
+    #[test]
+    fn test_round_trip_nested() {
+        let ty = Ty::dict(
+            Ty::string(),
+            Ty::list(Ty::tuple(vec![Ty::int(), Ty::none()])),
+        );
+        assert_round_trip(ty);
+    }
+
+    #[test]
+    fn test_multiple_values_in_one_stream() {
+        let a = Ty::list(Ty::string());
+        let b = Ty::dict(Ty::int(), Ty::bool());
+
+        let mut ser = TestingSerializer::new();
+        a.pagable_serialize(&mut ser).unwrap();
+        b.pagable_serialize(&mut ser).unwrap();
+        let bytes = ser.finish();
+
+        let mut de = TestingDeserializer::new(&bytes);
+        let restored_a = Ty::pagable_deserialize(&mut de).unwrap();
+        let restored_b = Ty::pagable_deserialize(&mut de).unwrap();
+        assert_eq!(restored_a, a);
+        assert_eq!(restored_b, b);
+        assert_ne!(restored_a, restored_b);
     }
 }
