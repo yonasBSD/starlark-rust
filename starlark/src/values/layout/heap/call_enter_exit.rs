@@ -71,6 +71,13 @@ impl<'v, D: MaybeDrop + Trace<'v> + 'v> StarlarkValue<'v> for CallEnter<'v, D> {
     type Canonical = Self;
 }
 
+#[cfg(feature = "pagable")]
+impl<'v, D: MaybeDrop + 'static> crate::typing::starlark_value::HasTyVTable for CallEnter<'v, D> {
+    const TY_VTABLE_STATIC: pagable::StaticValue<
+        crate::typing::starlark_value::TyStarlarkValueVTable,
+    > = crate::typing::starlark_value::UNREGISTERED_VTABLE_STATIC;
+}
+
 #[derive(
     Debug,
     derive_more::Display,
@@ -85,7 +92,10 @@ pub(crate) struct CallExit<D: MaybeDrop + 'static> {
 }
 
 #[starlark_value(type = "call_exit")]
-impl<'v, D: MaybeDrop> StarlarkValue<'v> for CallExit<D> {
+impl<'v, D: MaybeDrop> StarlarkValue<'v> for CallExit<D>
+where
+    CallExit<D>: crate::typing::starlark_value::HasTyVTable,
+{
     type Canonical = Self;
 }
 

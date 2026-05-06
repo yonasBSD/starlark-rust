@@ -26,7 +26,9 @@ use crate::values::layout::const_type_id::ConstTypeId;
 /// This is different from `TypeId` of `StarlarkValue` implementation:
 /// multiple Rust types can share the same `StarlarkTypeId`.
 /// For example, mutable and frozen list share the same `StarlarkTypeId`.
-#[derive(Eq, PartialEq, Hash, Copy, Clone, Dupe, Debug, Allocative)]
+#[derive(
+    Eq, PartialEq, PartialOrd, Ord, Hash, Copy, Clone, Dupe, Debug, Allocative
+)]
 pub(crate) struct StarlarkTypeId(ConstTypeId);
 
 impl StarlarkTypeId {

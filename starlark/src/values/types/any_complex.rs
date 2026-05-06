@@ -93,6 +93,13 @@ where
     type Canonical = Self;
 }
 
+#[cfg(feature = "pagable")]
+impl<T> crate::typing::starlark_value::HasTyVTable for StarlarkAnyComplex<T> {
+    const TY_VTABLE_STATIC: pagable::StaticValue<
+        crate::typing::starlark_value::TyStarlarkValueVTable,
+    > = crate::typing::starlark_value::UNREGISTERED_VTABLE_STATIC;
+}
+
 impl<'v, T> AllocValue<'v> for StarlarkAnyComplex<T>
 where
     Self: StarlarkValue<'v> + Freeze,

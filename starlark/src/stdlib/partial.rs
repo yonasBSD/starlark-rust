@@ -133,6 +133,8 @@ type FrozenPartial = PartialGen<FrozenValue, FrozenStringValue>;
 starlark_complex_values!(Partial);
 
 register_avalue_simple_frozen!(FrozenPartial);
+// `Partial<'v>::Canonical = Partial<'v>`
+crate::register_ty_starlark_value!(Partial<'_>);
 
 impl<'v> Freeze for Partial<'v> {
     type Frozen = FrozenPartial;
@@ -154,7 +156,7 @@ impl<'v, V: ValueLike<'v>, S: StringValueLike<'v>> StarlarkValue<'v> for Partial
 where
     Self: ProvidesStaticType<'v>,
 {
-    type Canonical = PartialGen<Value<'v>, StringValue<'v>>;
+    type Canonical = Partial<'v>;
 
     fn name_for_call_stack(&self, _me: Value<'v>) -> String {
         "partial".to_owned()

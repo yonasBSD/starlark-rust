@@ -27,8 +27,11 @@ pub mod serde {
     pub use serde::ser::Error;
 }
 pub use inventory;
-// Re-export for starlark_module-generated `pagable::static_str!` registrations.
+// `pagable` re-exports so macros can reach them via `$crate::__derive_refs`,
+// without consumer crates needing a direct `pagable` dependency.
+pub use pagable::StaticValue;
 pub use pagable::static_str;
+pub use pagable::static_value;
 pub mod components;
 pub mod invoke_macro_error;
 pub mod param_spec;
@@ -44,6 +47,13 @@ pub use crate::pagable::vtable_register::VtableRegistered;
 pub use crate::pagable::vtable_registry::DeserTypeId;
 #[cfg(feature = "pagable")]
 pub use crate::pagable::vtable_registry::VTableRegistryEntry;
+// Re-exports for TyStarlarkValue registration macro.
+pub use crate::typing::starlark_value::HasTyVTable;
+pub use crate::typing::starlark_value::TyStarlarkValueVTable;
+pub use crate::typing::starlark_value::TyStarlarkValueVTableGet;
+pub use crate::typing::starlark_value::TyStarlarkValueVTableStaticEntry;
+#[cfg(feature = "pagable")]
+pub use crate::typing::starlark_value::UNREGISTERED_VTABLE_STATIC;
 pub use crate::values::layout::avalues::simple::AValueSimple;
 pub use crate::values::layout::vtable::AValueVTable;
 // Re-export for declare_starlark_value_as_type! and #[starlark_types] proc macro output.

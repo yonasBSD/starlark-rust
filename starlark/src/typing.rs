@@ -59,6 +59,7 @@ pub use interface::Interface;
 pub use oracle::ctx::TypingOracleCtx;
 pub use oracle::traits::TypingBinOp;
 pub use oracle::traits::TypingUnOp;
+pub use starlark_value::HasTyVTable;
 pub use starlark_value::TyStarlarkValue;
 pub use structs::TyStruct;
 pub use ty::Approximation;

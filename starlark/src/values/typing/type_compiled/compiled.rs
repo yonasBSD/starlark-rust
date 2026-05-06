@@ -174,6 +174,10 @@ impl TypeMatcher for DummyTypeMatcher {
     }
 }
 
+// Register the canonical (`DummyTypeMatcher`) variant. Other matchers'
+// `Canonical` points here.
+crate::register_ty_starlark_value!(TypeCompiledImplAsStarlarkValue<DummyTypeMatcher>);
+
 #[starlark_value(type = "type")]
 impl<'v, T: 'static> StarlarkValue<'v> for TypeCompiledImplAsStarlarkValue<T>
 where

@@ -111,6 +111,14 @@ impl<'v, T: Debug + 'static> StarlarkValue<'v> for AnyArray<T> {
 /// through `AnyArray<T>` to reach `[T]`.
 pub type FrozenAnyArray<T> = FrozenValueTyped<'static, AnyArray<T>>;
 
+// Generic over arbitrary T; proc macro skips type params.
+#[cfg(feature = "pagable")]
+impl<T: Debug + 'static> crate::typing::starlark_value::HasTyVTable for AnyArray<T> {
+    const TY_VTABLE_STATIC: pagable::StaticValue<
+        crate::typing::starlark_value::TyStarlarkValueVTable,
+    > = crate::typing::starlark_value::UNREGISTERED_VTABLE_STATIC;
+}
+
 #[cfg(test)]
 mod tests {
     use std::sync::Arc;

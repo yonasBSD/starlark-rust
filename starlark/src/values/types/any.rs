@@ -119,6 +119,16 @@ impl<'v, T: Debug + Send + Sync + 'static> StarlarkValue<'v> for StarlarkAny<T> 
     type Canonical = Self;
 }
 
+// Generic over arbitrary T; proc macro skips type params.
+#[cfg(feature = "pagable")]
+impl<T: Debug + Send + Sync + 'static> crate::typing::starlark_value::HasTyVTable
+    for StarlarkAny<T>
+{
+    const TY_VTABLE_STATIC: pagable::StaticValue<
+        crate::typing::starlark_value::TyStarlarkValueVTable,
+    > = crate::typing::starlark_value::UNREGISTERED_VTABLE_STATIC;
+}
+
 impl<'v, T: StarlarkAnyBound> AllocValue<'v> for StarlarkAny<T> {
     fn alloc_value(self, heap: Heap<'v>) -> Value<'v> {
         heap.alloc_simple(self)
