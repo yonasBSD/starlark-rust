@@ -21,7 +21,7 @@ use std::hash::Hasher;
 
 use allocative::Allocative;
 use dupe::Dupe;
-use pagable::PagablePanic;
+use pagable::Pagable;
 use pagable::pagable_typetag;
 use starlark_map::sorted_map::SortedMap;
 use starlark_syntax::codemap::Span;
@@ -54,7 +54,7 @@ enum TyUserError {
 }
 
 /// Types of `[]` operator.
-#[derive(Allocative, Debug)]
+#[derive(Allocative, Debug, Pagable)]
 pub struct TyUserIndex {
     /// Type of index argument.
     pub(crate) index: Ty,
@@ -63,7 +63,7 @@ pub struct TyUserIndex {
 }
 
 /// Fields of the struct.
-#[derive(Allocative, Debug, Ord, PartialOrd, Eq, PartialEq, Hash)]
+#[derive(Allocative, Debug, Ord, PartialOrd, Eq, PartialEq, Hash, Pagable)]
 pub struct TyUserFields {
     /// Known fields.
     pub known: SortedMap<String, Ty>,
@@ -119,7 +119,7 @@ pub struct TyUserParams {
 }
 
 /// Type description for arbitrary type.
-#[derive(Allocative, Debug, derive_more::Display, PagablePanic)]
+#[derive(Allocative, Debug, derive_more::Display, Pagable)]
 #[display("{}", name)]
 #[pagable_typetag(TyCustomDyn)]
 pub struct TyUser {

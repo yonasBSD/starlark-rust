@@ -23,7 +23,6 @@ use std::sync::Arc;
 use allocative::Allocative;
 use dupe::Dupe;
 use pagable::Pagable;
-use pagable::PagablePanic;
 use pagable::pagable_typetag;
 use starlark_derive::type_matcher;
 use starlark_map::sorted_map::SortedMap;
@@ -57,15 +56,7 @@ impl TypeMatcher for StructMatcher {
 
 /// Struct type.
 #[derive(
-    Debug,
-    Clone,
-    PartialEq,
-    Eq,
-    Hash,
-    PartialOrd,
-    Ord,
-    Allocative,
-    PagablePanic
+    Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord, Allocative, Pagable
 )]
 #[pagable_typetag(TyCustomDyn)]
 pub struct TyStruct {
