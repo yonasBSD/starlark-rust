@@ -86,7 +86,7 @@ pub struct TyCustomFunction<F: TyCustomFunctionImpl>(pub F);
 
 impl<F: TyCustomFunctionImpl> TyCustomImpl for TyCustomFunction<F>
 where
-    F: PagableRegisteredFor<dyn TyCustomDyn, Self>,
+    Self: PagableRegisteredFor<dyn TyCustomDyn>,
 {
     fn as_name(&self) -> Option<&str> {
         Some("function")

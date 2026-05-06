@@ -430,7 +430,8 @@ impl Ty {
     )]
     pub fn custom_function<F>(f: F) -> Self
     where
-        F: TyCustomFunctionImpl + PagableRegisteredFor<dyn TyCustomDyn, TyCustomFunction<F>>,
+        F: TyCustomFunctionImpl,
+        TyCustomFunction<F>: PagableRegisteredFor<dyn TyCustomDyn>,
     {
         Ty::custom(TyCustomFunction(f))
     }
