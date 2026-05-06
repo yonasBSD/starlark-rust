@@ -18,6 +18,8 @@
 use std::fmt;
 use std::fmt::Display;
 use std::ops::Deref;
+use std::sync::Arc;
+use std::sync::Mutex;
 
 use allocative::Allocative;
 use dupe::Clone_;
@@ -267,7 +269,7 @@ impl<'de> PagableDeserialize<'de> for OwnedFrozenValue {
             deserializer.as_dyn(),
             state,
             heap_id,
-            HeapDeserializationState::empty(),
+            Arc::new(Mutex::new(HeapDeserializationState::empty())),
         );
 
         // Deserialize the FrozenValue.

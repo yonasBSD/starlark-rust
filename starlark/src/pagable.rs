@@ -69,10 +69,12 @@ mod starlark_pagable_impls;
 // Re-export public types
 pub use starlark_deserialize::StarlarkDeserialize;
 pub use starlark_deserialize::StarlarkDeserializeContext;
+pub use starlark_deserialize_context::StarlarkDeserializerImpl;
 pub use starlark_pagable::StarlarkPagable;
 pub use starlark_pagable_impls::SmallMapKeyDeserialize;
 pub use starlark_serialize::StarlarkSerialize;
 pub use starlark_serialize::StarlarkSerializeContext;
+pub use starlark_serialize_context::StarlarkSerializerImpl;
 
 #[cfg(all(test, feature = "pagable"))]
 mod tests;

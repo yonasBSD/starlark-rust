@@ -44,10 +44,6 @@ pub enum PagableError {
         actual_bytes: u32,
     },
 
-    /// No current heap context set for FrozenValue deserialization.
-    #[error("No current heap context set for FrozenValue deserialization")]
-    NoCurrentHeapContext,
-
     /// Heap bases not registered for current heap.
     #[error("Heap bases not registered for current heap")]
     HeapBasesNotRegistered,

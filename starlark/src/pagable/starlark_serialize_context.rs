@@ -23,6 +23,7 @@ use std::sync::Mutex;
 
 use pagable::PagableSerialize;
 use pagable::PagableSerializer;
+use starlark_syntax::internal_error;
 
 use crate::pagable::heap_ref_id::HeapRefId;
 use crate::pagable::serialized_frozen_value::SerializedFrozenValue;
@@ -114,20 +115,48 @@ pub struct StarlarkSerializerImpl<'a> {
     /// Shared state for cross-heap offset map lookups.
     state: Arc<Mutex<StarlarkSerState>>,
     /// The HeapRefId of the heap currently being serialized.
-    current_heap_id: Option<HeapRefId>,
+    current_heap_id: HeapRefId,
 }
 
+/// Wrapper type for storing the current heap id in the session context so it
+/// survives trips through pure `PagableSerializer` layers (e.g. when
+/// `#[starlark_pagable(pagable)]` routes a field through `PagableSerialize`
+/// and the concrete impl needs to re-enter the starlark context).
+#[derive(Clone, Copy)]
+pub(crate) struct CurrentHeapId(pub HeapRefId);
+
 impl<'a> StarlarkSerializerImpl<'a> {
+    /// Recover a `StarlarkSerializerImpl` after a hop through a pagable-only
+    /// boundary (typically `serialize_arc`). Reads the current heap id that
+    /// was stashed in the session before the hop, so the inner serialize
+    /// body can resolve `FrozenValue` references against the same heap as
+    /// the outer call.
+    ///
+    /// Errors if no outer heap serialization is in progress.
+    pub fn recover_from_pagable(serializer: &'a mut dyn PagableSerializer) -> crate::Result<Self> {
+        let heap_id = Self::current_heap_id_from_context(serializer).ok_or_else(|| {
+            internal_error!(
+                "recover_from_pagable called outside of starlark heap serialization: \
+                 no current heap id in session context"
+            )
+        })?;
+        let state = Self::get_or_create_state(serializer);
+        Ok(Self::new(serializer, state, heap_id))
+    }
+
     /// Create a new serializer with shared state and current heap id.
     pub(crate) fn new(
         pagable: &'a mut dyn PagableSerializer,
         state: Arc<Mutex<StarlarkSerState>>,
         current_heap_id: HeapRefId,
     ) -> Self {
+        pagable
+            .session_context()
+            .set(CurrentHeapId(current_heap_id));
         Self {
             pagable,
             state,
-            current_heap_id: Some(current_heap_id),
+            current_heap_id,
         }
     }
 
@@ -142,6 +171,17 @@ impl<'a> StarlarkSerializerImpl<'a> {
         let state = Arc::new(Mutex::new(StarlarkSerState::new()));
         ctx.set(state.clone());
         state
+    }
+
+    /// Read the currently-serializing heap id from the session context.
+    /// Returns `None` if no outer heap serialization has set it up.
+    pub(crate) fn current_heap_id_from_context(
+        serializer: &mut dyn PagableSerializer,
+    ) -> Option<HeapRefId> {
+        serializer
+            .session_context()
+            .get::<CurrentHeapId>()
+            .map(|h| h.0)
     }
 }
 
@@ -162,9 +202,7 @@ impl StarlarkSerializeContext for StarlarkSerializerImpl<'_> {
 
                 let is_str = fv.ptr_value().tags() == PointerTags::StrFrozen;
                 let raw_ptr = fv.ptr_value().ptr_value_untagged();
-                let heap_id = self
-                    .current_heap_id
-                    .expect("serialize_frozen_value called outside of heap serialization");
+                let heap_id = self.current_heap_id;
 
                 let state = self.state.lock().expect("ser state lock poisoned");
 

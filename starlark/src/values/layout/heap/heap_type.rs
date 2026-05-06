@@ -32,6 +32,7 @@ use std::mem::MaybeUninit;
 use std::ops::Deref;
 use std::ptr;
 use std::sync::Arc;
+use std::sync::Mutex;
 
 use allocative::Allocative;
 use bumpalo::Bump;
@@ -541,7 +542,7 @@ impl FrozenFrozenHeap {
             deserializer.as_dyn(),
             state.dupe(),
             heap_id,
-            deser_state,
+            Arc::new(Mutex::new(deser_state)),
         );
 
         // Register bases in shared state.
@@ -666,7 +667,7 @@ impl FrozenFrozenHeap {
     ) -> crate::Result<FrozenFrozenHeap> {
         let count = ctx.current_heap_deser_state().value_count();
         for i in 0..count {
-            let target = ctx.current_heap_deser_state_mut().try_claim(i);
+            let target = ctx.current_heap_deser_state().try_claim(i);
             if let Some(target) = target {
                 // SAFETY: abs_pos is computed from the offset table written during
                 // serialization — it points to the start of this value's data.

@@ -17,6 +17,8 @@
 
 //! Round-trip serialize/deserialize tests for Starlark values.
 
+use std::sync::Arc;
+
 use allocative::Allocative;
 use derive_more::Display;
 use pagable::PagableDeserialize;
@@ -1352,6 +1354,169 @@ fn test_static_frozen_value_round_trip() -> crate::Result<()> {
         ref4.target.ptr_value().ptr_value_untagged(),
         static_str_fv.ptr_value().ptr_value_untagged(),
         "Static string should point to the same static address"
+    );
+
+    Ok(())
+}
+
+// ============================================================================
+// `StarlarkSerializerImpl::recover_from_pagable` /
+// `StarlarkDeserializerImpl::recover_from_pagable`:
+// pagable Arc<T> dedup combined with starlark FrozenValue resolution.
+//
+// `InnerArcData` is reachable from the starlark layer via a derived
+// `StarlarkPagable` (so its `target: FrozenValue` is resolved against the
+// currently-deserializing heap), but it is also wrapped in `Arc<InnerArcData>`
+// inside `OuterArcValue` and routed through `pagable::PagableSerialize` (with
+// `#[starlark_pagable(pagable)]`) so the pagable Arc-identity dedup mechanism
+// can fire — two `OuterArcValue`s sharing the same `Arc<InnerArcData>`
+// serialize the body once and round-trip to pointer-equal Arcs.
+//
+// To bridge between the two layers, `InnerArcData::pagable_serialize` /
+// `pagable_deserialize` use `StarlarkSerializerImpl::recover_from_pagable`
+// and `StarlarkDeserializerImpl::recover_from_pagable` to recover the
+// starlark heap context inside what is otherwise a pure-pagable
+// (typetag/Arc) dispatch path.
+// ============================================================================
+
+/// Inner type carried inside an `Arc`. Holds a `FrozenValue` that must be
+/// resolved against the currently-(de)serializing heap. Implements:
+///   - `StarlarkPagable` via derive (so the `FrozenValue` field works).
+///   - `pagable::Pagable*` manually, bridging into the starlark context via
+///     `with_starlark_*_context` so the `Arc<InnerArcData>` field on
+///     `OuterArcValue` can be routed through pagable's Arc-dedup mechanism
+///     (which serializes the body using `pagable::PagableSerialize`, not
+///     `StarlarkSerialize`).
+#[derive(Debug, Allocative, ProvidesStaticType, StarlarkPagable)]
+struct InnerArcData {
+    target: FrozenValue,
+    label: u32,
+}
+
+impl pagable::PagableSerialize for InnerArcData {
+    fn pagable_serialize(
+        &self,
+        serializer: &mut dyn pagable::PagableSerializer,
+    ) -> pagable::Result<()> {
+        let mut ctx = crate::pagable::StarlarkSerializerImpl::recover_from_pagable(serializer)
+            .map_err(|e: crate::Error| e.into_anyhow())?;
+        <Self as crate::pagable::StarlarkSerialize>::starlark_serialize(self, &mut ctx)
+            .map_err(|e: crate::Error| e.into_anyhow())
+    }
+}
+
+impl<'de> pagable::PagableDeserialize<'de> for InnerArcData {
+    fn pagable_deserialize<D: pagable::PagableDeserializer<'de> + ?Sized>(
+        deserializer: &mut D,
+    ) -> pagable::Result<Self> {
+        let mut ctx =
+            crate::pagable::StarlarkDeserializerImpl::recover_from_pagable(deserializer.as_dyn())
+                .map_err(|e: crate::Error| e.into_anyhow())?;
+        <Self as crate::pagable::StarlarkDeserialize>::starlark_deserialize(&mut ctx)
+            .map_err(|e: crate::Error| e.into_anyhow())
+    }
+}
+
+/// Outer `StarlarkValue` holding an `Arc<InnerArcData>` plus a `Vec<u32>`.
+/// The `Vec` puts it firmly on the **drop bump**, which is serialized
+/// *first* on the wire (before the non-drop bump). The inner
+/// `target: FrozenValue` then points into the non-drop bump (`SimpleData`),
+/// which is serialized *second*. So when the deserializer is processing
+/// an `OuterArcValue` body, the inner `FrozenValue` is a forward
+/// reference into a not-yet-deserialized non-drop slot — exercising the
+/// `ensure_initialized` work-queue path through the shared
+/// `HeapDeserializationState` that `StarlarkDeserializerImpl::recover_from_pagable`
+/// hands off via the session context.
+///
+/// The `Arc<InnerArcData>` field is routed through `pagable::PagableSerialize`
+/// (via `#[starlark_pagable(pagable)]`) so multiple `OuterArcValue`s sharing
+/// the same Arc dedup on the wire and round-trip to a pointer-equal Arc.
+#[derive(
+    Debug,
+    Display,
+    Allocative,
+    ProvidesStaticType,
+    NoSerialize,
+    StarlarkPagable
+)]
+#[display("OuterArcValue({})", self.outer_label)]
+struct OuterArcValue {
+    #[starlark_pagable(pagable)]
+    inner: Arc<InnerArcData>,
+    outer_label: u32,
+    items: Vec<u32>,
+}
+
+starlark_simple_value!(OuterArcValue);
+
+#[starlark_value(type = "OuterArcValue", skip_pagable)]
+impl<'v> StarlarkValue<'v> for OuterArcValue {
+    type Canonical = Self;
+}
+
+#[test]
+fn test_with_starlark_context_arc_dedup_round_trip() -> crate::Result<()> {
+    let heap = FrozenHeap::new();
+    let target_fv = heap.alloc_simple(SimpleData {
+        flag: true,
+        count: 314,
+    });
+
+    // Build a single Arc shared by the two OuterArcValues.
+    let shared = Arc::new(InnerArcData {
+        target: target_fv,
+        label: 99,
+    });
+
+    heap.alloc_simple(OuterArcValue {
+        inner: shared.clone(),
+        outer_label: 1,
+        items: vec![10, 20, 30],
+    });
+    heap.alloc_simple(OuterArcValue {
+        inner: shared,
+        outer_label: 2,
+        items: vec![40, 50],
+    });
+
+    let heap_ref = heap.into_ref_named(TestHeapName::heap_name("test_with_starlark_context_arc"));
+    let restored = round_trip_heap_ref(&heap_ref)?;
+
+    // SimpleData has no Drop, so it lives in the undrop bump.
+    let undrop = restored.collect_undrop_headers_ordered();
+    assert_eq!(undrop.len(), 1);
+    let target_data: &SimpleData = undrop[0].unpack().downcast_ref().unwrap();
+    assert_eq!(target_data.flag, true);
+    assert_eq!(target_data.count, 314);
+
+    // OuterArcValue has `Vec<u32>` (and `Arc`), so it lives in the drop bump.
+    let drop_headers = restored.collect_drop_headers_ordered();
+    assert_eq!(drop_headers.len(), 2);
+    let outer_a: &OuterArcValue = drop_headers[0].unpack().downcast_ref().unwrap();
+    let outer_b: &OuterArcValue = drop_headers[1].unpack().downcast_ref().unwrap();
+    assert_eq!(outer_a.outer_label, 1);
+    assert_eq!(outer_b.outer_label, 2);
+    assert_eq!(outer_a.items, vec![10, 20, 30]);
+    assert_eq!(outer_b.items, vec![40, 50]);
+
+    // Inner data round-tripped correctly: both Arcs see the same label and a
+    // FrozenValue resolving to the SimpleData target above.
+    assert_eq!(outer_a.inner.label, 99);
+    assert_eq!(outer_b.inner.label, 99);
+    let target_addr = undrop[0] as *const _ as usize;
+    assert_eq!(
+        outer_a.inner.target.ptr_value().ptr_value_untagged(),
+        target_addr,
+    );
+    assert_eq!(
+        outer_b.inner.target.ptr_value().ptr_value_untagged(),
+        target_addr,
+    );
+
+    // Arc dedup: the two restored Arcs must point at the same allocation.
+    assert!(
+        Arc::ptr_eq(&outer_a.inner, &outer_b.inner),
+        "pagable Arc dedup should round-trip the shared Arc as a single allocation",
     );
 
     Ok(())

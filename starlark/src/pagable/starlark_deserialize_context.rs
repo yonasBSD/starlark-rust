@@ -20,11 +20,13 @@
 use std::collections::HashMap;
 use std::sync::Arc;
 use std::sync::Mutex;
+use std::sync::MutexGuard;
 
 use dupe::Dupe;
 use pagable::PagableCursor;
 use pagable::PagableDeserialize;
 use pagable::PagableDeserializer;
+use starlark_syntax::internal_error;
 
 use crate::pagable::error::PagableError;
 use crate::pagable::heap_ref_id::HeapRefId;
@@ -74,6 +76,12 @@ pub(crate) struct ValueDeserSlot {
     /// Whether this value has been deserialized.
     initialized: bool,
 }
+
+// SAFETY: `ValueDeserSlot` holds raw pointers into a heap arena that is
+// owned, alive, and accessed only via the surrounding `Mutex<HeapDeserializationState>`.
+// The wrapping mutex serializes all access; the pointers themselves are
+// stable for the heap's deserialization lifetime.
+unsafe impl Send for ValueDeserSlot {}
 
 impl ValueDeserSlot {
     pub(crate) fn new(
@@ -241,23 +249,71 @@ pub struct StarlarkDeserializerImpl<'a, 'de> {
     /// Shared state for cross-heap base lookups.
     state: Arc<Mutex<StarlarkDeserState>>,
     /// The HeapRefId of the heap currently being deserialized.
-    current_heap_id: Option<HeapRefId>,
+    current_heap_id: HeapRefId,
     /// Current heap value tracking for ensure_initialized.
-    current_heap_deser_state: HeapDeserializationState,
+    /// Stored as `Arc<Mutex<...>>` so nested deserializers entering via
+    /// [`StarlarkDeserializerImpl::recover_from_pagable`] can share the same work queue and
+    /// forward references resolve correctly across the nesting context.
+    current_heap_deser_state: Arc<Mutex<HeapDeserializationState>>,
+}
+
+/// Bundle of "currently-deserializing heap" data stored in the deserialize
+/// session context so it survives trips through pure `PagableDeserializer`
+/// layers. Pairs `heap_id` with the heap's `HeapDeserializationState` so
+/// nested deserializers (e.g. via [`StarlarkDeserializerImpl::recover_from_pagable`]) see
+/// the same forward-reference work queue as the outer flow.
+#[derive(Clone, Dupe)]
+pub(crate) struct CurrentHeapDeserState {
+    pub(crate) heap_id: HeapRefId,
+    pub(crate) deser_state: Arc<Mutex<HeapDeserializationState>>,
 }
 
 impl<'a, 'de> StarlarkDeserializerImpl<'a, 'de> {
+    /// Recover a `StarlarkDeserializerImpl` after a hop through a pagable-only
+    /// boundary (typically `serialize_arc` / `deserialize_arc`). Reads the
+    /// heap context that was stashed in the session before the hop.
+    ///
+    /// Errors if no outer heap deserialization is in progress.
+    pub fn recover_from_pagable(
+        deserializer: &'a mut dyn PagableDeserializer<'de>,
+    ) -> crate::Result<Self> {
+        let current =
+            Self::current_heap_deser_state_from_context(deserializer).ok_or_else(|| {
+                internal_error!(
+                    "recover_from_pagable called outside of starlark heap deserialization: \
+                     no current heap deser state in session context"
+                )
+            })?;
+        let state = Self::get_or_create_state(deserializer);
+        Ok(Self::new(
+            deserializer,
+            state,
+            current.heap_id,
+            current.deser_state,
+        ))
+    }
+
     /// Create a new deserializer with shared state and current heap id.
     pub(crate) fn new(
         pagable: &'a mut dyn PagableDeserializer<'de>,
         state: Arc<Mutex<StarlarkDeserState>>,
         current_heap_id: HeapRefId,
-        current_heap_deser_state: HeapDeserializationState,
+        current_heap_deser_state: Arc<Mutex<HeapDeserializationState>>,
     ) -> Self {
+        {
+            let mut ctx = pagable
+                .session_context()
+                .lock()
+                .expect("session context lock poisoned");
+            ctx.set(CurrentHeapDeserState {
+                heap_id: current_heap_id,
+                deser_state: current_heap_deser_state.dupe(),
+            });
+        }
         Self {
             pagable,
             state,
-            current_heap_id: Some(current_heap_id),
+            current_heap_id,
             current_heap_deser_state,
         }
     }
@@ -278,12 +334,25 @@ impl<'a, 'de> StarlarkDeserializerImpl<'a, 'de> {
         state
     }
 
-    pub(crate) fn current_heap_deser_state(&mut self) -> &HeapDeserializationState {
-        &self.current_heap_deser_state
+    /// Read the currently-deserializing heap context (id + work queue) from
+    /// the session context. Returns `None` if no outer heap deserialization
+    /// has set it up.
+    pub(crate) fn current_heap_deser_state_from_context(
+        deserializer: &mut dyn PagableDeserializer<'_>,
+    ) -> Option<CurrentHeapDeserState> {
+        let ctx = deserializer
+            .session_context()
+            .lock()
+            .expect("session context lock poisoned");
+        ctx.get::<CurrentHeapDeserState>().map(|c| c.dupe())
     }
 
-    pub(crate) fn current_heap_deser_state_mut(&mut self) -> &mut HeapDeserializationState {
-        &mut self.current_heap_deser_state
+    /// Lock and return the current heap's deserialization state. The guard
+    /// allows both read and mutation (slot claiming).
+    pub(crate) fn current_heap_deser_state(&self) -> MutexGuard<'_, HeapDeserializationState> {
+        self.current_heap_deser_state
+            .lock()
+            .expect("current heap deser state lock poisoned")
     }
 }
 
@@ -297,9 +366,7 @@ impl<'de> StarlarkDeserializeContext<'de> for StarlarkDeserializerImpl<'_, 'de> 
         let state = self.state.lock().expect("deser state lock poisoned");
         match serialized {
             SerializedFrozenValue::SameHeapPtr { offset, is_str } => {
-                let heap_id = self
-                    .current_heap_id
-                    .ok_or(PagableError::NoCurrentHeapContext)?;
+                let heap_id = self.current_heap_id;
                 let bases = state
                     .heap_bases
                     .get(&heap_id)
@@ -344,7 +411,7 @@ impl<'de> StarlarkDeserializeContext<'de> for StarlarkDeserializerImpl<'_, 'de> 
             None => return Ok(()),
         };
 
-        let target = match self.current_heap_deser_state_mut().try_claim(idx) {
+        let target = match self.current_heap_deser_state().try_claim(idx) {
             Some(target) => target,
             None => return Ok(()), // Already initialized.
         };
