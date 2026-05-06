@@ -8,7 +8,7 @@ Program:
 f(x = 1, 2
 
 Error:
-error: Parse error: unexpected new line here, expected one of ")" or ","
+error: Parse error: unexpected new line, expected symbol ')'
  --> error_precedence:1:11
   |
 1 | f(x = 1, 2
@@ -20,7 +20,7 @@ Program:
 def f(**x, y
 
 Error:
-error: Parse error: unexpected new line here, expected one of "(", ")", ",", ":" or "="
+error: Parse error: unexpected new line, expected symbol ')'
  --> error_precedence:1:13
   |
 1 | def f(**x, y
@@ -33,7 +33,7 @@ return 1
 )
 
 Error:
-error: Parse error: unexpected symbol ')' here, expected one of "\n", "(", "+", "-", "...", "DEDENT", "FLOAT", "FSTRING", "IDENTIFIER", "INTEGER", "STRING", "[", "break", "continue", "def", "elif", "else", "for", "if", "lambda", "load", "not", "pass", "return", "{" or "~"
+error: Parse error: unexpected symbol ')', expected expression
  --> error_precedence:2:1
   |
 2 | )
@@ -47,7 +47,7 @@ def f():
 )
 
 Error:
-error: Parse error: unexpected symbol ')' here, expected one of "\n", "(", "+", "-", "...", "DEDENT", "FLOAT", "FSTRING", "IDENTIFIER", "INTEGER", "STRING", "[", "break", "continue", "def", "elif", "else", "for", "if", "lambda", "load", "not", "pass", "return", "{" or "~"
+error: Parse error: unexpected symbol ')', expected expression
  --> error_precedence:3:1
   |
 3 | )

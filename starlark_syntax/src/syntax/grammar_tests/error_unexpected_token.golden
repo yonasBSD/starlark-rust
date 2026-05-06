@@ -8,7 +8,7 @@ Program:
 x = = 1
 
 Error:
-error: Parse error: unexpected symbol '=' here, expected one of "(", "+", "-", "...", "FLOAT", "FSTRING", "IDENTIFIER", "INTEGER", "STRING", "[", "lambda", "not", "{" or "~"
+error: Parse error: unexpected symbol '=', expected expression
  --> error_unexpected_token:1:5
   |
 1 | x = = 1
@@ -20,7 +20,7 @@ Program:
 _ = *x
 
 Error:
-error: Parse error: unexpected symbol '*' here, expected one of "(", "+", "-", "...", "FLOAT", "FSTRING", "IDENTIFIER", "INTEGER", "STRING", "[", "lambda", "not", "{" or "~"
+error: Parse error: unexpected symbol '*', expected expression
  --> error_unexpected_token:1:5
   |
 1 | _ = *x
@@ -33,7 +33,7 @@ def foo(,):
   pass
 
 Error:
-error: Parse error: unexpected symbol ',' here, expected one of ")", "*", "**", "/" or "IDENTIFIER"
+error: Parse error: unexpected symbol ',', expected identifier
  --> error_unexpected_token:1:9
   |
 1 | def foo(,):
@@ -45,7 +45,7 @@ Program:
 f(a=1, *, b=2)
 
 Error:
-error: Parse error: unexpected symbol ',' here, expected one of "(", "+", "-", "...", "FLOAT", "FSTRING", "IDENTIFIER", "INTEGER", "STRING", "[", "lambda", "not", "{" or "~"
+error: Parse error: unexpected symbol ',', expected expression
  --> error_unexpected_token:1:9
   |
 1 | f(a=1, *, b=2)
@@ -57,7 +57,7 @@ Program:
 x = [1, , 2]
 
 Error:
-error: Parse error: unexpected symbol ',' here, expected one of "(", "+", "-", "...", "FLOAT", "FSTRING", "IDENTIFIER", "INTEGER", "STRING", "[", "]", "lambda", "not", "{" or "~"
+error: Parse error: unexpected symbol ',', expected expression
  --> error_unexpected_token:1:9
   |
 1 | x = [1, , 2]
@@ -69,7 +69,7 @@ Program:
 _ = a + b not c
 
 Error:
-error: Parse error: unexpected identifier 'c' here, expected one of "in"
+error: Parse error: unexpected identifier 'c', expected 'in' after 'not'
  --> error_unexpected_token:1:15
   |
 1 | _ = a + b not c
@@ -81,7 +81,7 @@ Program:
 f(1+2 = 3)
 
 Error:
-error: Parse error: unexpected symbol '=' here, expected one of ")" or ","
+error: Parse error: unexpected symbol '=', expected symbol ')'
  --> error_unexpected_token:1:7
   |
 1 | f(1+2 = 3)
@@ -93,7 +93,7 @@ Program:
 x = {,}
 
 Error:
-error: Parse error: unexpected symbol ',' here, expected one of "(", "+", "-", "...", "FLOAT", "FSTRING", "IDENTIFIER", "INTEGER", "STRING", "[", "lambda", "not", "{", "}" or "~"
+error: Parse error: unexpected symbol ',', expected expression
  --> error_unexpected_token:1:6
   |
 1 | x = {,}
@@ -105,7 +105,7 @@ Program:
 print 1 2
 
 Error:
-error: Parse error: unexpected integer literal '1' here, expected one of "\n", "!=", "%", "%=", "&", "&=", "(", ")", "*", "*=", "+", "+=", ",", "-", "-=", ".", "/", "//", "//=", "/=", ":", ";", "<", "<<", "<<=", "<=", "=", "==", ">", ">=", ">>", ">>=", "[", "]", "^", "^=", "and", "else", "for", "if", "in", "not", "or", "|", "|=" or "}"
+error: Parse error: unexpected integer literal '1', expected new line
  --> error_unexpected_token:1:7
   |
 1 | print 1 2
@@ -117,7 +117,7 @@ Program:
 x[1, 2,:]
 
 Error:
-error: Parse error: unexpected symbol ',' here, expected one of "]"
+error: Parse error: unexpected symbol ',', expected symbol ']'
  --> error_unexpected_token:1:7
   |
 1 | x[1, 2,:]
@@ -129,7 +129,7 @@ Program:
 a = max(range(10)))
 
 Error:
-error: Parse error: unexpected symbol ')' here, expected one of "\n", "," or ";"
+error: Parse error: unexpected symbol ')', expected new line
  --> error_unexpected_token:1:19
   |
 1 | a = max(range(10)))
@@ -142,7 +142,7 @@ def foo(x,,y):
   pass
 
 Error:
-error: Parse error: unexpected symbol ',' here, expected one of ")", "*", "**", "/" or "IDENTIFIER"
+error: Parse error: unexpected symbol ',', expected identifier
  --> error_unexpected_token:1:11
   |
 1 | def foo(x,,y):

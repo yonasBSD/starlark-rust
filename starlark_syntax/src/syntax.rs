@@ -19,6 +19,7 @@
 
 pub use ast_load::AstLoad;
 pub use module::AstModule;
+pub use module::ParserKind;
 
 pub use crate::dialect::Dialect;
 pub use crate::dialect::DialectTypes;
@@ -44,6 +45,7 @@ pub mod validate;
 pub(crate) mod parse_error;
 pub(crate) mod parser;
 pub(crate) mod parser_lalrpop;
+pub(crate) mod parser_rd;
 
 #[allow(clippy::all)]
 // Things we explicitly turn on need to be explicitly turned off
