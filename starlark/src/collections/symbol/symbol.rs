@@ -23,6 +23,8 @@ use std::slice;
 use std::str;
 
 use allocative::Allocative;
+use pagable::PagableDeserialize;
+use pagable::PagableSerialize;
 use starlark_derive::Trace;
 use starlark_map::Hashed;
 use starlark_map::StarlarkHashValue;
@@ -115,5 +117,23 @@ impl Symbol {
 
     pub(crate) fn small_hash(&self) -> StarlarkHashValue {
         self.small_hash
+    }
+}
+
+impl PagableSerialize for Symbol {
+    fn pagable_serialize(
+        &self,
+        serializer: &mut dyn pagable::PagableSerializer,
+    ) -> pagable::Result<()> {
+        self.as_str().to_owned().pagable_serialize(serializer)
+    }
+}
+
+impl<'de> PagableDeserialize<'de> for Symbol {
+    fn pagable_deserialize<D: pagable::PagableDeserializer<'de> + ?Sized>(
+        deserializer: &mut D,
+    ) -> pagable::Result<Self> {
+        let s = String::pagable_deserialize(deserializer)?;
+        Ok(Symbol::new(&s))
     }
 }
