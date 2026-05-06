@@ -134,14 +134,13 @@ mod tests {
     #[derive(Debug, Clone, Dupe)]
     struct IncrementOnDrop(Arc<AtomicU32>);
 
-    // Register IncrementOnDrop for use with alloc_any_slice in pagable mode.
-    register_starlark_any!(IncrementOnDrop);
-
     impl Drop for IncrementOnDrop {
         fn drop(&mut self) {
             self.0.fetch_add(1, Ordering::SeqCst);
         }
     }
+
+    register_starlark_any!(IncrementOnDrop);
 
     #[test]
     fn test_drop() {

@@ -26,6 +26,7 @@ use crate::values::StarlarkValue;
 use crate::values::Tracer;
 use crate::values::Value;
 use crate::values::any::FrozenAnyValue;
+use crate::values::any::StarlarkAnyRegistered;
 use crate::values::layout::avalue::AValue;
 use crate::values::layout::avalue::AValueImpl;
 use crate::values::layout::heap::repr::AValueRepr;
@@ -106,7 +107,7 @@ impl<T: StarlarkValue<'static>> AllocStaticSimple<T> {
     }
 }
 
-impl<T: std::fmt::Debug + Send + Sync + 'static> AllocStaticSimple<StarlarkAny<T>> {
+impl<T: StarlarkAnyRegistered> AllocStaticSimple<StarlarkAny<T>> {
     /// Unpack as a [`FrozenAnyValue`], providing direct access to the inner `T`.
     pub fn unpack_any(&'static self) -> FrozenAnyValue<T> {
         FrozenAnyValue::from_typed(self.unpack())

@@ -693,8 +693,6 @@ mod tests {
     use crate::values::any::StarlarkAny;
     use crate::values::layout::avalues::simple::simple;
 
-    crate::register_starlark_any!(String);
-
     fn to_repr(x: &AValueHeader) -> String {
         let mut s = String::new();
         x.unpack().collect_repr(&mut s);
