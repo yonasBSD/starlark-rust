@@ -48,7 +48,9 @@ pub enum ParamIsRequired {
 }
 
 /// The type of a parameter - can be positional, by name, `*args` or `**kwargs`.
-#[derive(Debug, Clone, Dupe, PartialEq, Eq, Hash, PartialOrd, Ord, Allocative)]
+#[derive(
+    Debug, Clone, Dupe, PartialEq, Eq, Hash, PartialOrd, Ord, Allocative, Pagable
+)]
 pub(crate) enum ParamMode {
     /// Parameter can only be passed by position.
     PosOnly(ParamIsRequired),
