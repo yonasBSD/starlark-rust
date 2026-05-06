@@ -26,6 +26,7 @@ use allocative::Allocative;
 use dupe::Dupe;
 use pagable::Pagable;
 use pagable::pagable_typetag;
+use starlark_derive::StarlarkPagable;
 use starlark_derive::starlark_module;
 use starlark_derive::starlark_value;
 use starlark_derive::type_matcher;
@@ -262,7 +263,8 @@ fn type_compiled_methods(methods: &mut MethodsBuilder) {
     Copy,
     Dupe,
     Coerce,
-    ProvidesStaticType
+    ProvidesStaticType,
+    StarlarkPagable
 )]
 #[repr(transparent)]
 pub struct TypeCompiled<V: ValueLifetimeless>(
