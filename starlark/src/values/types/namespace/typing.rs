@@ -21,6 +21,7 @@ use std::fmt::Formatter;
 
 use allocative::Allocative;
 use dupe::Dupe;
+use pagable::Pagable;
 use pagable::PagablePanic;
 use pagable::pagable_typetag;
 use starlark_derive::type_matcher;
@@ -57,17 +58,7 @@ impl TypeMatcher for NamespaceMatcher {
 }
 
 #[derive(
-    Allocative,
-    Clone,
-    Copy,
-    Dupe,
-    Debug,
-    Eq,
-    PartialEq,
-    Hash,
-    Ord,
-    PartialOrd,
-    PagablePanic
+    Allocative, Clone, Copy, Dupe, Debug, Eq, PartialEq, Hash, Ord, PartialOrd, Pagable
 )]
 pub(super) struct TyNamespaceFunction;
 

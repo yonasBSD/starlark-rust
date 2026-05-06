@@ -20,7 +20,7 @@ use std::hash::Hash;
 
 use allocative::Allocative;
 use dupe::Dupe;
-use pagable::PagablePanic;
+use pagable::Pagable;
 use pagable::PagableRegisteredFor;
 use pagable::pagable_tagged;
 
@@ -41,7 +41,7 @@ use crate::values::typing::type_compiled::alloc::TypeMatcherAlloc;
 
 /// Custom function typechecker.
 pub trait TyCustomFunctionImpl:
-    Debug + Eq + Ord + Hash + Allocative + Send + Sync + 'static
+    Debug + Eq + Ord + Hash + Allocative + Send + Sync + Pagable + 'static
 {
     /// Whether this function acts as a type constructor (e.g., for `|` syntax).
     fn is_type(&self) -> bool {
@@ -74,7 +74,7 @@ pub trait TyCustomFunctionImpl:
     PartialOrd,
     Debug,
     derive_more::Display,
-    PagablePanic
+    Pagable
 )]
 #[display(
     "def({}) -> {}",
@@ -142,7 +142,9 @@ where
 }
 
 /// A function.
-#[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord, Allocative)]
+#[derive(
+    Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord, Allocative, Pagable
+)]
 pub struct TyFunction {
     /// The `.type` property of the function, often `""`.
     pub(crate) type_attr: Option<Ty>,
