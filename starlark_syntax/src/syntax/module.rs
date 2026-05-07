@@ -63,6 +63,22 @@ pub enum ParserKind {
     Rd,
 }
 
+impl std::str::FromStr for ParserKind {
+    type Err = ParserKindParseError;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s {
+            "lalrpop" => Ok(ParserKind::Lalrpop),
+            "recursive_descent" | "rd" => Ok(ParserKind::Rd),
+            other => Err(ParserKindParseError(other.to_owned())),
+        }
+    }
+}
+
+#[derive(Debug, thiserror::Error)]
+#[error("invalid `ParserKind` value `{0}`; expected one of `lalrpop`, `recursive_descent`, `rd`")]
+pub struct ParserKindParseError(pub String);
+
 /// A representation of a Starlark module abstract syntax tree.
 ///
 /// Created with either [`parse`](AstModule::parse) or [`parse_file`](AstModule::parse_file),
